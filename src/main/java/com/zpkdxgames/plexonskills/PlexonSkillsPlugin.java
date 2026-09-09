@@ -96,7 +96,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             getCommand("skillsadmin").setTabCompleter(adminCommand);
 
             if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                new SkillsPlaceholderExpansion(api, runtime::get, getPluginMeta().getVersion()).register();
+                new SkillsPlaceholderExpansion(api, runtime::get, abilities, getPluginMeta().getVersion()).register();
             }
 
             scheduleFlush();

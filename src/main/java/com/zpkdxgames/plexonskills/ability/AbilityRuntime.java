@@ -22,7 +22,8 @@ import java.util.function.Supplier;
 
 /**
  * Main-thread active-ability coordinator. One shared sweep task handles expiration for all players;
- * no repeating task is created per player or per ability.
+ * no repeating task is created per player or per ability. Read methods are synchronized so cached
+ * ability state can be consumed safely by integrations such as PlaceholderAPI without touching Bukkit.
  */
 public final class AbilityRuntime implements Listener, AutoCloseable {
     public enum State { DISABLED, LOCKED, READY, ACTIVE, COOLDOWN }
@@ -46,12 +47,12 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
         this.diagnostics = diagnostics;
     }
 
-    public void start() {
+    public synchronized void start() {
         if (sweepTask != null) sweepTask.cancel();
         sweepTask = Bukkit.getScheduler().runTaskTimer(plugin, this::sweep, 20L, 20L);
     }
 
-    public View view(UUID playerId, SkillType skill, int level) {
+    public synchronized View view(UUID playerId, SkillType skill, int level) {
         AbilityDefinition definition = settings.get().abilities().definition(skill);
         if (!settings.get().abilities().enabled() || definition == null || !definition.enabled()) {
             return new View(definition, State.DISABLED, 0L);
@@ -67,7 +68,7 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
         return new View(definition, State.READY, 0L);
     }
 
-    public ActivationResult activate(Player player, SkillType skill, int level) {
+    public synchronized ActivationResult activate(Player player, SkillType skill, int level) {
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Ability activation requires primary thread");
         View before = view(player.getUniqueId(), skill, level);
         if (!player.hasPermission("plexonskills.abilities")) {
@@ -102,21 +103,26 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
     }
 
     /** Returns the configured XP multiplier only while the ability is authoritatively active. */
-    public double xpMultiplier(UUID playerId, SkillType skill) {
+    public synchronized double xpMultiplier(UUID playerId, SkillType skill) {
         AbilityDefinition definition = settings.get().abilities().definition(skill);
         if (definition == null || !settings.get().abilities().enabled(skill)) return 1.0;
         return value(activeUntil, playerId, skill) > System.currentTimeMillis() ? definition.xpMultiplier() : 1.0;
     }
 
-    public int activePlayers() { return activeUntil.size(); }
+    /** Async-safe cached cooldown read; does not access Bukkit or persistence. */
+    public synchronized long cooldownRemainingMillis(UUID playerId, SkillType skill) {
+        return Math.max(0L, value(cooldownUntil, playerId, skill) - System.currentTimeMillis());
+    }
+
+    public synchronized int activePlayers() { return activeUntil.size(); }
 
     @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
+    public synchronized void onQuit(PlayerQuitEvent event) {
         activeUntil.remove(event.getPlayer().getUniqueId());
         cooldownUntil.remove(event.getPlayer().getUniqueId());
     }
 
-    private void sweep() {
+    private synchronized void sweep() {
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Ability sweep requires primary thread");
         long now = System.currentTimeMillis();
         Iterator<Map.Entry<UUID, long[]>> iterator = activeUntil.entrySet().iterator();
@@ -167,7 +173,7 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (sweepTask != null) { sweepTask.cancel(); sweepTask = null; }
         activeUntil.clear();
         cooldownUntil.clear();
