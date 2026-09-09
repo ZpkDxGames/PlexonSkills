@@ -1,42 +1,66 @@
 # PlexonSkills
 
-PlexonSkills is the first-party, Core-native RPG skill/progression system for PlexonCraft. Version 1.0.0 is designed as an incremental replacement for mcMMO gameplay progression without copying or porting mcMMO implementation code.
+PlexonSkills is the first-party, Core-native RPG skill/progression system for PlexonCraft.
+
+The repository is currently developing **PlexonSkills 2.0.0**, the Phase 2 premium-tier product rebuild. The 2.0 line preserves the safe Core-native progression/persistence foundation from the 1.0 candidate while rebuilding the player and administrator experience around meaningful progression, abilities, milestones and premium GUI flows.
 
 ## Platform
 
 - Paper 26.2
 - Java 25
-- PlexonCore 2.0.0 / Core API 2.0 required
+- PlexonCore 2.0.4 / Core API 2.0 required
 - PlaceholderAPI optional
 
-## 1.0 skill set
+## Skill set
 
 Mining, Woodcutting, Excavation, Farming, Fishing, Swords, Axes, Archery, Unarmed, Taming, Acrobatics, Repair and Alchemy.
 
-Block progression uses PlexonCore's shared block-break gateway and authoritative origin classification. Combat, fishing, fall, repair and brewing use narrow local listeners because Core 2.0.0 does not yet expose shared gateways for those event families.
+Block progression uses PlexonCore's shared block-break gateway and authoritative origin classification. Event families that are not exposed through a shared Core gateway remain handled by narrow PlexonSkills listeners, with duplicate-processing prevention preserved.
+
+## 2.0 product direction
+
+The Phase 2 rebuild targets:
+
+- premium `/skills` navigation;
+- player profile and per-skill detail screens;
+- milestone-oriented progression roadmaps;
+- configurable active abilities and cooldown states;
+- milestone rewards and mastery presentation;
+- GUI leaderboards and statistics;
+- PlexonTools-derived MiniMessage presentation grammar;
+- practical administrator tooling;
+- safe 1.x -> 2.0 data migration;
+- measurable runtime quality without hot-path regressions.
+
+See [`PlexonSkills_2.0.0_PremiumTier_Product_Rebuild_AI_Builder_Specification.md`](PlexonSkills_2.0.0_PremiumTier_Product_Rebuild_AI_Builder_Specification.md) for the complete implementation contract.
 
 ## Safety defaults
 
-- Migration mode defaults to `SHADOW`.
-- Natural-only block skills reject `PLAYER_PLACED` and fail closed on `UNKNOWN` origin.
-- Farming rewards mature harvests rather than applying Mining's natural-only policy.
+- Migration mode defaults to `SHADOW` while a legacy migration source is being validated.
+- Natural-only block skills reject `PLAYER_PLACED` and can fail closed on `UNKNOWN` origin.
+- Farming validates harvest maturity rather than blindly applying Mining's natural-only policy.
 - Profiles are authoritative in memory; SQLite writes are coalesced.
-- No database/file I/O occurs in the block-break hot path.
-- Abilities ship disabled until production balancing/staging evidence exists.
+- No database/file I/O belongs in the block-break hot path.
+- Visual feedback is coalesced rather than emitted once per high-frequency event.
 
 ## Build
 
-CI pins PlexonCore 2.0.0 by SHA-256 and builds on Java 25:
+CI pins PlexonCore 2.0.4 by SHA-256 and builds on Java 25:
 
 ```bash
 gradle --no-daemon clean test check javadoc shadowJar verifyDistribution writeSha256
 ```
 
-The installable output is `build/libs/PlexonSkills-1.0.0.jar`.
+The 2.0 distribution target is:
+
+```text
+build/libs/PlexonSkills-2.0.0.jar
+build/distributions/SHA256SUMS.txt
+```
 
 ## Release status
 
-The source can be released as a **candidate** after CI is green. Stable `v1.0.0` additionally requires real server migration, SHADOW/PRIMARY staging, Spark/performance and soak evidence described in [docs/STAGING.md](docs/STAGING.md). The repository does not fabricate those results.
+The `agent/2.0.0-premium-tier-product-rebuild` branch is a development branch. Stable `v2.0.0` requires the dedicated acceptance checklist, green automated verification, safe migration coverage and explicit reporting for runtime-only Spark/soak/manual GUI gates. Runtime evidence is never fabricated.
 
 ## Documentation
 

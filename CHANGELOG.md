@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 — Phase 2 premium-tier rebuild
+
+Development branch: `agent/2.0.0-premium-tier-product-rebuild`.
+
+- Align build and CI with PlexonCore 2.0.4.
+- Rebuild the player product layer around premium GUI navigation, meaningful milestones and active abilities.
+- Preserve the Core-native progression, persistence and anti-exploit foundation from 1.0.
+- Add safe 1.x -> 2.0 migration, premium diagnostics, updated API/PAPI surface and immutable release provenance.
+
+This section remains in development until the 2.0.0 acceptance checklist is complete.
+
 ## 1.0.0 — candidate implementation
 
 - Added all thirteen required skill domains.

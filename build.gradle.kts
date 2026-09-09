@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.zpkdxgames"
-version = "1.0.0"
+version = "2.0.0"
 
 java {
     toolchain {
@@ -23,7 +23,7 @@ repositories {
     maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
 }
 
-val coreJar = layout.projectDirectory.file("libs/PlexonCore-2.0.0.jar")
+val coreJar = layout.projectDirectory.file("libs/PlexonCore-2.0.4.jar")
 
 dependencies {
     compileOnly(files(coreJar))
@@ -68,8 +68,8 @@ tasks.named<Jar>("jar") {
     isReproducibleFileOrder = true
 }
 
-// Compatibility alias required by the implementation specification. PlexonSkills intentionally
-// does not shade Paper/Core/PAPI and uses Core-owned SQLite, so the normal JAR is the distribution JAR.
+// PlexonSkills intentionally does not shade Paper/Core/PAPI and uses Core-owned SQLite,
+// so the normal JAR is the installable distribution JAR.
 tasks.register("shadowJar") {
     group = "build"
     description = "Builds the installable PlexonSkills JAR (no runtime shading required)."
