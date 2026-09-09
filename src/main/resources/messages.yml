@@ -1,0 +1,8 @@
+prefix: '<gray>[<aqua>PlexonSkills</aqua>]</gray> '
+profile-loading: '<yellow>Your skill profile is still loading.</yellow>'
+profile-degraded: '<red>Your skill profile is unavailable. Progression is paused to protect your data.</red>'
+shadow-mode: '<yellow>PlexonSkills is in SHADOW mode; live XP is not being committed.</yellow>'
+level-up: '<green>{skill}</green> <gray>{old} -></gray> <aqua>{new}</aqua>'
+no-permission: '<red>You do not have permission.</red>'
+reload-ok: '<green>Configuration reloaded atomically.</green>'
+reload-failed: '<red>Reload failed; the previous runtime remains active.</red>'
