@@ -27,6 +27,9 @@ public record AbilityDefinition(
         if (!Double.isFinite(xpMultiplier) || xpMultiplier < 1.0 || xpMultiplier > 3.0) throw new IllegalArgumentException("xpMultiplier must be 1.0..3.0 for " + id);
     }
 
+    public long durationSeconds() { return durationMillis / 1_000L; }
+    public long cooldownSeconds() { return cooldownMillis / 1_000L; }
+
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " must not be blank");
         return value.trim();

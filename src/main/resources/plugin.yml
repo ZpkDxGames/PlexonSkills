@@ -14,13 +14,12 @@ softdepend:
 commands:
   skills:
     description: Open PlexonSkills or inspect progression.
-    usage: /skills [skill|stats|top|rank]
+    usage: /skills [skill|stats|top|rank|abilities|admin]
     aliases: [skill]
     permission: plexonskills.use
   skillsadmin:
     description: PlexonSkills administration and diagnostics.
-    usage: /skillsadmin <reload|diagnostics|setxp|setlevel|addxp|reset|backup|migrate>
-    permission: plexonskills.admin
+    usage: /skillsadmin [gui|reload|diagnostics|setxp|setlevel|addxp|reset|backup|migrate]
 permissions:
   plexonskills.use:
     default: true
@@ -28,11 +27,38 @@ permissions:
     default: true
   plexonskills.admin:
     default: op
+    children:
+      plexonskills.admin.gui: true
+      plexonskills.admin.xp: true
+      plexonskills.admin.reset: true
+      plexonskills.admin.ability: true
+      plexonskills.admin.config: true
+      plexonskills.admin.reload: true
+      plexonskills.admin.backup: true
+      plexonskills.admin.migrate: true
+      plexonskills.admin.diagnostics: true
+  plexonskills.admin.gui:
+    default: op
+  plexonskills.admin.xp:
+    default: op
+  plexonskills.admin.reset:
+    default: op
+  plexonskills.admin.ability:
+    default: op
+  plexonskills.admin.config:
+    default: op
   plexonskills.admin.reload:
     default: op
-  plexonskills.admin.modify:
+  plexonskills.admin.backup:
     default: op
   plexonskills.admin.migrate:
     default: op
   plexonskills.admin.diagnostics:
     default: op
+  # Legacy compatibility permission retained for existing LuckPerms setups.
+  plexonskills.admin.modify:
+    default: op
+    children:
+      plexonskills.admin.xp: true
+      plexonskills.admin.reset: true
+      plexonskills.admin.backup: true

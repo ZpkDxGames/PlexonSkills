@@ -52,6 +52,13 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
         sweepTask = Bukkit.getScheduler().runTaskTimer(plugin, this::sweep, 20L, 20L);
     }
 
+    /** Clears transient ability state and recreates the one shared sweep task after a runtime reload. */
+    public synchronized void resetForReload() {
+        activeUntil.clear();
+        cooldownUntil.clear();
+        start();
+    }
+
     public synchronized View view(UUID playerId, SkillType skill, int level) {
         AbilityDefinition definition = settings.get().abilities().definition(skill);
         if (!settings.get().abilities().enabled() || definition == null || !definition.enabled()) {
@@ -100,6 +107,23 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
         diagnostics.abilityActivation();
         player.sendActionBar(Component.text(definition.displayName() + " active — " + formatSeconds(definition.durationMillis()) + "s"));
         return new ActivationResult(true, view(player.getUniqueId(), skill, level), "Activated " + definition.displayName() + ".");
+    }
+
+    /** Ends an active ability immediately while preserving its configured cooldown. */
+    public synchronized boolean endActive(Player player, SkillType skill) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Ability administration requires primary thread");
+        long now = System.currentTimeMillis();
+        if (value(activeUntil, player.getUniqueId(), skill) <= now) return false;
+        set(activeUntil, player.getUniqueId(), skill, 0L);
+        AbilityDefinition definition = settings.get().abilities().definition(skill);
+        if (definition != null) Bukkit.getPluginManager().callEvent(new PlexonSkillAbilityEndEvent(player, skill, definition.id()));
+        diagnostics.abilityEnded();
+        return true;
+    }
+
+    /** Clears a single cached cooldown. Intended for explicit administrator actions. */
+    public synchronized void clearCooldown(UUID playerId, SkillType skill) {
+        set(cooldownUntil, playerId, skill, 0L);
     }
 
     /** Returns the configured XP multiplier only while the ability is authoritatively active. */

@@ -11,6 +11,7 @@ import com.zpkdxgames.plexonskills.command.SkillsCommand;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
 import com.zpkdxgames.plexonskills.gui.AbilityMenuBridge;
+import com.zpkdxgames.plexonskills.gui.AdminSkillsMenu;
 import com.zpkdxgames.plexonskills.gui.MilestoneMenuBridge;
 import com.zpkdxgames.plexonskills.gui.SkillsMenu;
 import com.zpkdxgames.plexonskills.migration.McMmoMigrationService;
@@ -24,11 +25,14 @@ import com.zpkdxgames.plexonskills.skill.SkillProgressionService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -80,18 +84,20 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
 
             GameplayListener gameplay = new GameplayListener(runtime::get, progression, players, diagnostics);
             SkillsMenu menu = new SkillsMenu(this, api, runtime::get, repository);
+            AdminSkillsMenu adminMenu = new AdminSkillsMenu(this, api, runtime::get, abilities);
             AbilityMenuBridge abilityMenu = new AbilityMenuBridge(api, abilities);
             MilestoneMenuBridge milestoneMenu = new MilestoneMenuBridge(api, runtime::get);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
             Bukkit.getPluginManager().registerEvents(abilities, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
+            Bukkit.getPluginManager().registerEvents(adminMenu, this);
             Bukkit.getPluginManager().registerEvents(abilityMenu, this);
             Bukkit.getPluginManager().registerEvents(milestoneMenu, this);
 
-            SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu);
+            SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu, adminMenu);
             getCommand("skills").setExecutor(skillsCommand);
             getCommand("skills").setTabCompleter(skillsCommand);
-            SkillsAdminCommand adminCommand = new SkillsAdminCommand(this, migration);
+            SkillsAdminCommand adminCommand = new SkillsAdminCommand(this, migration, adminMenu);
             getCommand("skillsadmin").setExecutor(adminCommand);
             getCommand("skillsadmin").setTabCompleter(adminCommand);
 
@@ -133,6 +139,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             RuntimeSettings candidate = RuntimeSettings.load(this, epoch.incrementAndGet());
             runtime.set(candidate);
             blockRuntime.rebuild();
+            abilities.resetForReload();
             feedback.start();
             scheduleFlush();
             core.modules().updateState("skills", ModuleRegistry.ModuleState.READY, "Reloaded epoch " + candidate.epoch() + ", mode=" + candidate.migrationMode());
@@ -142,6 +149,61 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             getLogger().warning("Runtime reload rejected: " + error.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Persist one boolean configuration value on Core's I/O lane, then atomically reload on the
+     * server thread. This is intentionally narrow: complex balancing remains YAML-controlled.
+     */
+    public void updateBooleanConfig(String fileName, String path, boolean value, Player actor, Runnable successAction) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Configuration mutations must be initiated on the primary thread");
+        if (!Set.of("skills.yml", "abilities.yml", "rewards.yml").contains(fileName)) throw new IllegalArgumentException("Unsupported mutable config file");
+        File file = new File(getDataFolder(), fileName);
+        core.scheduler().supplyIo(() -> {
+            try {
+                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+                ConfigBooleanPrevious previous = new ConfigBooleanPrevious(yaml.contains(path), yaml.getBoolean(path));
+                yaml.set(path, value);
+                yaml.save(file);
+                return previous;
+            } catch (Exception ex) {
+                throw new IllegalStateException("Failed to persist " + fileName + " path " + path, ex);
+            }
+        }).whenComplete((previous, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                if (actor.isOnline()) actor.sendMessage(Component.text("Configuration update failed: " + rootMessage(error)));
+                return;
+            }
+            if (reloadRuntime()) {
+                if (actor.isOnline()) {
+                    actor.sendMessage(Component.text("Configuration updated and runtime reloaded."));
+                    if (successAction != null) successAction.run();
+                }
+                return;
+            }
+            if (actor.isOnline()) actor.sendMessage(Component.text("Runtime rejected the update; restoring the previous file value."));
+            restoreBooleanConfig(file, path, previous, actor);
+        }));
+    }
+
+    private void restoreBooleanConfig(File file, String path, ConfigBooleanPrevious previous, Player actor) {
+        core.scheduler().supplyIo(() -> {
+            try {
+                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+                yaml.set(path, previous.existed() ? previous.value() : null);
+                yaml.save(file);
+                return true;
+            } catch (Exception ex) {
+                throw new IllegalStateException("Failed to restore rejected configuration value", ex);
+            }
+        }).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Failed to restore rejected config mutation", error);
+                if (actor.isOnline()) actor.sendMessage(Component.text("WARNING: configuration rollback failed; inspect the server log before another reload."));
+            } else if (actor.isOnline()) {
+                actor.sendMessage(Component.text("Previous configuration value restored."));
+            }
+        }));
     }
 
     public void sendDiagnostics(CommandSender sender) {
@@ -211,6 +273,14 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     }
 
     private void saveIfMissing(String name) {
-        if (!new java.io.File(getDataFolder(), name).exists()) saveResource(name, false);
+        if (!new File(getDataFolder(), name).exists()) saveResource(name, false);
     }
+
+    private static String rootMessage(Throwable error) {
+        Throwable cursor = error;
+        while (cursor.getCause() != null) cursor = cursor.getCause();
+        return cursor.getMessage() == null ? cursor.getClass().getSimpleName() : cursor.getMessage();
+    }
+
+    private record ConfigBooleanPrevious(boolean existed, boolean value) { }
 }
