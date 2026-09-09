@@ -1,5 +1,6 @@
 package com.zpkdxgames.plexonskills.milestone;
 
+import com.zpkdxgames.plexonskills.skill.SkillPassive;
 import com.zpkdxgames.plexonskills.skill.SkillType;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -9,7 +10,6 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -30,9 +30,7 @@ public final class MilestoneRegistry {
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         boolean enabled = yaml.getBoolean("milestones.enabled", true);
         Set<SkillType> disabled = EnumSet.noneOf(SkillType.class);
-        for (String raw : yaml.getStringList("milestones.disabled-skills")) {
-            SkillType.parse(raw).ifPresent(disabled::add);
-        }
+        for (String raw : yaml.getStringList("milestones.disabled-skills")) SkillType.parse(raw).ifPresent(disabled::add);
 
         List<Map<?, ?>> templates = new ArrayList<>(yaml.getMapList("milestones.defaults"));
         EnumMap<SkillType, List<MilestoneDefinition>> result = new EnumMap<>(SkillType.class);
@@ -69,23 +67,30 @@ public final class MilestoneRegistry {
         return milestones(skill).stream().filter(m -> m.level() > level).findFirst();
     }
 
+    public Optional<MilestoneDefinition> highestReached(SkillType skill, int level) {
+        if (!enabled) return Optional.empty();
+        MilestoneDefinition result = null;
+        for (MilestoneDefinition milestone : milestones(skill)) if (milestone.level() <= level) result = milestone;
+        return Optional.ofNullable(result);
+    }
+
     public List<MilestoneDefinition> crossed(SkillType skill, int oldLevel, int newLevel) {
         if (!enabled || newLevel <= oldLevel) return List.of();
         return milestones(skill).stream().filter(m -> m.level() > oldLevel && m.level() <= newLevel).toList();
     }
 
+    /** Derived, restart-safe skill-specific passive multiplier. No claim state is persisted. */
     public double passiveMultiplier(SkillType skill, int level) {
         if (!enabled) return 1.0;
-        double bonus = 0.0;
-        for (MilestoneDefinition milestone : milestones(skill)) if (level >= milestone.level()) bonus += milestone.passiveXpBonus();
-        return 1.0 + Math.min(0.50, Math.max(0.0, bonus));
+        double baseBonus = 0.0;
+        for (MilestoneDefinition milestone : milestones(skill)) if (level >= milestone.level()) baseBonus += milestone.passiveXpBonus();
+        double baseMultiplier = 1.0 + Math.min(0.50, Math.max(0.0, baseBonus));
+        return SkillPassive.forSkill(skill).apply(baseMultiplier);
     }
 
     static int scaledLevel(int maximumLevel, double progress) {
         int max = Math.max(1, maximumLevel);
         if (progress >= 1.0) return max;
-        // Level 1 is the zero-progress baseline. Fractional milestones advance from that baseline,
-        // then clamp to the configured maximum so 10% of a 1000-level curve unlocks at level 101.
         return Math.max(1, Math.min(max, 1 + (int) Math.floor(max * progress)));
     }
 

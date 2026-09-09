@@ -3,6 +3,7 @@ package com.zpkdxgames.plexonskills.gui;
 import com.zpkdxgames.plexonskills.api.PlexonSkillsAPI;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.milestone.MilestoneDefinition;
+import com.zpkdxgames.plexonskills.skill.SkillPassive;
 import com.zpkdxgames.plexonskills.skill.SkillType;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
 
-/** Replaces generic chapter placeholders with configured milestone rewards on the progression screen. */
+/** Replaces generic chapter placeholders with configured milestone/passive progression on the roadmap screen. */
 public final class MilestoneMenuBridge implements Listener {
     private static final int[] SLOTS = {10, 12, 14, 16, 29, 31};
     private final PlexonSkillsAPI api;
@@ -38,6 +39,7 @@ public final class MilestoneMenuBridge implements Listener {
     private void render(Player player, SkillType skill, Inventory inventory) {
         RuntimeSettings runtime = settings.get();
         int level = api.getLevel(player.getUniqueId(), skill);
+        SkillPassive passive = SkillPassive.forSkill(skill);
         List<MilestoneDefinition> milestones = runtime.milestones().milestones(skill);
         for (int slot : SLOTS) inventory.setItem(slot, null);
 
@@ -51,19 +53,24 @@ public final class MilestoneMenuBridge implements Listener {
             String state = completed ? "✔ COMPLETED" : next ? "◆ NEXT MILESTONE" : "✕ LOCKED";
             String color = completed ? "#66BB6A" : next ? "#FFD740" : "#EF5350";
             Material material = completed ? Material.LIME_DYE : next ? Material.COMPASS : Material.GRAY_DYE;
+            double effectiveBonus = milestone.passiveXpBonus() * passive.milestoneCoefficient();
             inventory.setItem(SLOTS[index++], SkillsUi.item(material,
                 "<!italic><gradient:#FFF176:#FF8F00><bold>" + milestone.displayName() + "</bold></gradient>",
                 "<!italic><dark_gray>" + milestone.description() + "</dark_gray>", "",
                 row("#FFD740", "✥", "Required Level", Integer.toString(milestone.level())),
-                row("#66BB6A", "▰", "Permanent XP", String.format(Locale.ROOT, "+%.1f%%", milestone.passiveXpBonus() * 100.0)),
+                row("#80CBC4", "◇", "Passive", passive.displayName()),
+                row("#66BB6A", "▰", "Effective XP", String.format(Locale.ROOT, "+%.1f%%", effectiveBonus * 100.0)),
                 "", "<!italic><gray>Status</gray> <" + color + "><bold>" + state + "</bold></" + color + ">"));
         }
 
         boolean mastered = level >= runtime.curve().maximumLevel();
+        double totalPassive = Math.max(0.0, (runtime.milestones().passiveMultiplier(skill, level) - 1.0) * 100.0);
         inventory.setItem(SLOTS[SLOTS.length - 1], SkillsUi.item(mastered ? Material.NETHER_STAR : Material.NETHERITE_INGOT,
             "<!italic><gradient:#8BC34A:#DCEDC8><bold>FULL MASTERY</bold></gradient>",
             "<!italic><dark_gray>Terminal configured progression state</dark_gray>", "",
             row("#FFD740", "✥", "Required Level", Integer.toString(runtime.curve().maximumLevel())),
+            row("#80CBC4", "◇", "Passive Identity", passive.displayName()),
+            row("#66BB6A", "▰", "Current Passive", String.format(Locale.ROOT, "+%.1f%%", totalPassive)),
             "<!italic><gray>Status</gray> " + (mastered ? "<#AEEA00><bold>✦ FULLY MASTERED</bold></#AEEA00>" : "<#EF5350><bold>✕ LOCKED</bold></#EF5350>")));
     }
 

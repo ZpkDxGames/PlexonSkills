@@ -13,6 +13,7 @@ import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
 import com.zpkdxgames.plexonskills.gui.AbilityMenuBridge;
 import com.zpkdxgames.plexonskills.gui.AdminSkillsMenu;
 import com.zpkdxgames.plexonskills.gui.MilestoneMenuBridge;
+import com.zpkdxgames.plexonskills.gui.PassiveMenuBridge;
 import com.zpkdxgames.plexonskills.gui.SkillsMenu;
 import com.zpkdxgames.plexonskills.migration.McMmoMigrationService;
 import com.zpkdxgames.plexonskills.persistence.SkillsRepository;
@@ -87,12 +88,14 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             AdminSkillsMenu adminMenu = new AdminSkillsMenu(this, api, runtime::get, abilities);
             AbilityMenuBridge abilityMenu = new AbilityMenuBridge(api, abilities);
             MilestoneMenuBridge milestoneMenu = new MilestoneMenuBridge(api, runtime::get);
+            PassiveMenuBridge passiveMenu = new PassiveMenuBridge(api, runtime::get, abilities);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
             Bukkit.getPluginManager().registerEvents(abilities, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
             Bukkit.getPluginManager().registerEvents(adminMenu, this);
             Bukkit.getPluginManager().registerEvents(abilityMenu, this);
             Bukkit.getPluginManager().registerEvents(milestoneMenu, this);
+            Bukkit.getPluginManager().registerEvents(passiveMenu, this);
 
             SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu, adminMenu);
             getCommand("skills").setExecutor(skillsCommand);
