@@ -43,7 +43,11 @@ public final class SkillsRepository implements AutoCloseable {
                 try (PreparedStatement ps = connection.prepareStatement("SELECT skill,total_xp FROM skill_progress WHERE player_uuid=?")) {
                     ps.setString(1, playerId.toString());
                     try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) SkillType.parse(rs.getString(1)).ifPresent(type -> xp.put(type, curve.clampXp(rs.getLong(2))));
+                        while (rs.next()) {
+                            String skillId = rs.getString(1);
+                            long totalXp = curve.clampXp(rs.getLong(2));
+                            SkillType.parse(skillId).ifPresent(type -> xp.put(type, totalXp));
+                        }
                     }
                 }
                 return new LoadedProfile(playerId, playerName, xp);
