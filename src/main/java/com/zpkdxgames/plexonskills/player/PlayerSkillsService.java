@@ -11,6 +11,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -29,7 +30,8 @@ public final class PlayerSkillsService {
     private final Map<UUID, String> names = new ConcurrentHashMap<>();
     private final Map<UUID, AtomicInteger> generations = new ConcurrentHashMap<>();
     private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
-    private volatile CompletableFuture<Void> lastFlush = CompletableFuture.completedFuture(null);
+    private final Set<CompletableFuture<Void>> inFlightWrites = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, SkillsRepository.NamedSnapshot> detachedPending = new ConcurrentHashMap<>();
 
     public PlayerSkillsService(JavaPlugin plugin, SkillsRepository repository, Supplier<RuntimeSettings> settings, SkillsDiagnostics diagnostics) {
         this.plugin=plugin; this.repository=repository; this.settings=settings; this.diagnostics=diagnostics;
@@ -42,9 +44,20 @@ public final class PlayerSkillsService {
         names.put(id, player.getName());
         profiles.put(id, new PlayerSkillsProfile(id, ProfileStatus.LOADING));
         RuntimeSettings snapshot = settings.get();
-        repository.load(id, player.getName(), snapshot.curve()).whenComplete((loaded, error) ->
+
+        SkillsRepository.NamedSnapshot detached = detachedPending.get(id);
+        CompletableFuture<Void> writeBarrier;
+        if (detached == null) {
+            writeBarrier = CompletableFuture.completedFuture(null);
+        } else {
+            writeBarrier = trackWrite(repository.save(java.util.List.of(detached)));
+            writeBarrier.thenRun(() -> detachedPending.remove(id, detached));
+        }
+
+        writeBarrier.thenCompose(ignored -> repository.load(id, player.getName(), snapshot.curve())).whenComplete((loaded, error) ->
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (generations.getOrDefault(id, new AtomicInteger()).get() != generation) return;
+                AtomicInteger currentGeneration = generations.get(id);
+                if (currentGeneration == null || currentGeneration.get() != generation) return;
                 Player online = Bukkit.getPlayer(id);
                 if (online == null || !online.isOnline()) return;
                 if (error != null) {
@@ -68,8 +81,13 @@ public final class PlayerSkillsService {
         dirty.remove(id);
         names.remove(id);
         if (profile != null && profile.status() == ProfileStatus.READY) {
-            repository.save(java.util.List.of(new SkillsRepository.NamedSnapshot(player.getName(), profile.snapshot())))
-                .exceptionally(error -> { diagnostics.persistenceFailure(); plugin.getLogger().severe("Failed logout skill flush for " + id + ": " + rootMessage(error)); return null; });
+            SkillsRepository.NamedSnapshot snapshot = new SkillsRepository.NamedSnapshot(player.getName(), profile.snapshot());
+            detachedPending.put(id, snapshot);
+            CompletableFuture<Void> write = trackWrite(repository.save(java.util.List.of(snapshot)));
+            write.whenComplete((ignored, error) -> {
+                if (error == null) detachedPending.remove(id, snapshot);
+                else plugin.getLogger().severe("Failed logout skill flush for " + id + ": " + rootMessage(error));
+            });
         }
     }
 
@@ -77,6 +95,8 @@ public final class PlayerSkillsService {
     public boolean ready(UUID id) { PlayerSkillsProfile p=profiles.get(id); return p!=null && p.status()==ProfileStatus.READY; }
     public int loadedCount() { return profiles.size(); }
     public long dirtyCount() { return dirty.size(); }
+    public int inFlightWriteCount() { return inFlightWrites.size(); }
+    public int detachedPendingCount() { return detachedPending.size(); }
 
     public PlayerSkillsProfile.Mutation addXp(UUID id, SkillType skill, long amount) {
         assertMainThread();
@@ -104,24 +124,45 @@ public final class PlayerSkillsService {
         Collection<SkillsRepository.NamedSnapshot> batch = snapshotDirty(false);
         if(batch.isEmpty()) return;
         diagnostics.flushBatch();
-        CompletableFuture<Void> future = repository.save(batch);
-        lastFlush = future;
+        CompletableFuture<Void> future = trackWrite(repository.save(batch));
         future.whenComplete((ignored,error)->{
             if(error!=null){
-                diagnostics.persistenceFailure();
                 for(SkillsRepository.NamedSnapshot s:batch) dirty.add(s.snapshot().playerId());
                 plugin.getLogger().severe("Skill flush failed: "+rootMessage(error));
             }
         });
     }
 
+    /**
+     * Enqueues one final snapshot containing every loaded READY profile and every detached logout
+     * snapshot, then waits for all writes that were already in flight before SQLite may be closed.
+     */
     public void shutdown(Duration timeout) {
         assertMainThread();
-        Collection<SkillsRepository.NamedSnapshot> all = snapshotDirty(true);
-        CompletableFuture<Void> flush = all.isEmpty() ? lastFlush : repository.save(all);
-        try { flush.get(Math.max(1,timeout.toSeconds()), TimeUnit.SECONDS); }
-        catch (Exception ex) { diagnostics.persistenceFailure(); plugin.getLogger().severe("Timed out/failure flushing skill profiles on shutdown: "+rootMessage(ex)); }
-        profiles.clear(); dirty.clear(); names.clear();
+        LinkedHashMap<UUID, SkillsRepository.NamedSnapshot> finalSnapshots = new LinkedHashMap<>();
+        detachedPending.forEach(finalSnapshots::put);
+        for (SkillsRepository.NamedSnapshot snapshot : snapshotDirty(true)) finalSnapshots.put(snapshot.snapshot().playerId(), snapshot);
+        if (!finalSnapshots.isEmpty()) trackWrite(repository.save(finalSnapshots.values()));
+
+        CompletableFuture<?>[] waits = inFlightWrites.stream()
+            .map(future -> future.handle((ignored, error) -> null))
+            .toArray(CompletableFuture[]::new);
+        try {
+            CompletableFuture.allOf(waits).get(Math.max(1,timeout.toSeconds()), TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            diagnostics.persistenceFailure();
+            plugin.getLogger().severe("Timed out/failure waiting for skill persistence shutdown barrier: "+rootMessage(ex));
+        }
+        profiles.clear(); dirty.clear(); names.clear(); detachedPending.clear(); inFlightWrites.clear();
+    }
+
+    private CompletableFuture<Void> trackWrite(CompletableFuture<Void> future) {
+        inFlightWrites.add(future);
+        future.whenComplete((ignored, error) -> {
+            inFlightWrites.remove(future);
+            if (error != null) diagnostics.persistenceFailure();
+        });
+        return future;
     }
 
     private Collection<SkillsRepository.NamedSnapshot> snapshotDirty(boolean allReady) {

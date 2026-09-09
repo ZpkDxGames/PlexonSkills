@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - agent/2.0.0-premium-tier-product-rebuild
     tags: ['v*']
 
 permissions:
@@ -16,7 +18,7 @@ env:
 
 jobs:
   candidate:
-    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[candidate-release]')
+    if: github.ref == 'refs/heads/agent/2.0.0-premium-tier-product-rebuild' && contains(github.event.head_commit.message, '[candidate-release]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,10 +63,10 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "PlexonSkills ${VERSION} RC1" \
-            --notes-file releases/2.0.0.md
+            --notes-file releases/2.0.0-rc.1.md
 
   stable:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/tags/v2.0.0'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

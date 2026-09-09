@@ -56,6 +56,8 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     private PlexonSkillsApiImpl api;
     private McMmoMigrationService migration;
     private BukkitTask flushTask;
+    private volatile SkillsRepository.SchemaInspection productSchema;
+    private volatile Path productMigrationBackup;
 
     @Override
     public void onEnable() {
@@ -66,15 +68,38 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             RuntimeSettings initial = RuntimeSettings.load(this, epoch.incrementAndGet());
             runtime.set(initial);
 
-            SqliteService.SqliteDatabase database = core.persistence().open(getDataFolder().toPath().resolve("skills.db"));
+            Path databasePath = getDataFolder().toPath().resolve("skills.db");
+            SqliteService.SqliteDatabase database = core.persistence().open(databasePath);
             repository = new SkillsRepository(database);
-            repository.initialize().get(10, TimeUnit.SECONDS);
+            SkillsRepository.SchemaInspection before = repository.inspectSchema().get(10, TimeUnit.SECONDS);
+            if (before.state() == SkillsRepository.SchemaState.INCOMPATIBLE) {
+                throw new IllegalStateException("Unsafe PlexonSkills schema refused: " + before.detail());
+            }
+            if (before.state() == SkillsRepository.SchemaState.LEGACY_1_X) {
+                Path destination = getDataFolder().toPath().resolve("backups").resolve("skills-pre-2.0-" + System.currentTimeMillis() + ".db");
+                productMigrationBackup = core.scheduler().supplyIo(() -> {
+                    try { return repository.backup(destination); }
+                    catch (Exception ex) { throw new IllegalStateException("Failed to create mandatory pre-2.0 backup", ex); }
+                }).get(15, TimeUnit.SECONDS);
+            }
+            repository.initialize(initial.curve()).get(15, TimeUnit.SECONDS);
+            SkillsRepository.SchemaInspection after = repository.inspectSchema().get(10, TimeUnit.SECONDS);
+            if (after.state() != SkillsRepository.SchemaState.CURRENT_2_0) {
+                throw new IllegalStateException("PlexonSkills schema migration did not reach product schema 2: " + after.detail());
+            }
+            if (before.state() != SkillsRepository.SchemaState.EMPTY && !before.fingerprint().equals(after.fingerprint())) {
+                throw new IllegalStateException("Canonical XP invariant failed during 2.0 migration: before=" + before.fingerprint() + " after=" + after.fingerprint());
+            }
+            productSchema = after;
+            if (productMigrationBackup != null) {
+                repository.writeMigrationMeta("pre_2_0_backup", productMigrationBackup.toString()).get(5, TimeUnit.SECONDS);
+            }
 
             players = new PlayerSkillsService(this, repository, runtime::get, diagnostics);
             feedback = new ProgressFeedback(this, runtime::get);
             abilities = new AbilityRuntime(this, runtime::get, diagnostics);
             progression = new SkillProgressionService(players, runtime::get, diagnostics, feedback, abilities);
-            api = new PlexonSkillsApiImpl(players, progression, runtime::get);
+            api = new PlexonSkillsApiImpl(players, progression, runtime::get, abilities);
             migration = new McMmoMigrationService(this, core, repository);
             blockRuntime = new CoreBlockSkillsRuntime(core, runtime::get, progression, diagnostics);
 
@@ -111,8 +136,8 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             scheduleFlush();
             for (var player : Bukkit.getOnlinePlayers()) players.load(player);
             core.modules().updateState("skills", ModuleRegistry.ModuleState.READY,
-                "Core API " + core.version().apiVersion() + ", mode=" + runtime.get().migrationMode());
-            getLogger().info("PlexonSkills " + getPluginMeta().getVersion() + " enabled on Core API " + core.version().apiVersion() + " in " + runtime.get().migrationMode() + " mode.");
+                "Core API " + core.version().apiVersion() + ", schema=2, mode=" + runtime.get().migrationMode());
+            getLogger().info("PlexonSkills " + getPluginMeta().getVersion() + " enabled on Core API " + core.version().apiVersion() + " with product schema 2 in " + runtime.get().migrationMode() + " mode.");
         } catch (Throwable failure) {
             getLogger().log(java.util.logging.Level.SEVERE, "PlexonSkills failed to initialize safely", failure);
             if (core != null) core.modules().updateState("skills", ModuleRegistry.ModuleState.FAILED, failure.getClass().getSimpleName() + ": " + failure.getMessage());
@@ -123,12 +148,12 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         if (flushTask != null) { flushTask.cancel(); flushTask = null; }
+        Bukkit.getServicesManager().unregisterAll(this);
         if (blockRuntime != null) blockRuntime.close();
         if (abilities != null) abilities.close();
         if (feedback != null) feedback.close();
         if (players != null && runtime.get() != null) players.shutdown(Duration.ofSeconds(runtime.get().shutdownTimeoutSeconds()));
         if (repository != null) repository.close();
-        Bukkit.getServicesManager().unregisterAll(this);
         if (core != null) {
             core.modules().updateState("skills", ModuleRegistry.ModuleState.DISABLED, "Plugin disabled");
             core.modules().unregister("skills");
@@ -150,6 +175,17 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         } catch (Throwable error) {
             runtime.set(previous);
             getLogger().warning("Runtime reload rejected: " + error.getMessage());
+            try {
+                if (previous != null) {
+                    if (blockRuntime != null) blockRuntime.rebuild();
+                    if (abilities != null) abilities.resetForReload();
+                    if (feedback != null) feedback.start();
+                    if (players != null) scheduleFlush();
+                }
+            } catch (Throwable rollbackFailure) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Runtime rollback encountered a secondary failure", rollbackFailure);
+                core.modules().updateState("skills", ModuleRegistry.ModuleState.FAILED, "Reload rollback failed: " + rollbackFailure.getMessage());
+            }
             return false;
         }
     }
@@ -222,11 +258,12 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         sender.sendMessage(Component.text("Milestones: reached=" + d.milestonesReached() + " templates=" + runtime.get().milestones().milestones(com.zpkdxgames.plexonskills.skill.SkillType.MINING).size()));
         sender.sendMessage(Component.text("Anti-exploit: origin-rejected=" + d.originRejected() + " profile-not-ready=" + d.profileNotReady()));
         sender.sendMessage(Component.text("Events: block=" + d.blockFacts() + " combat=" + d.combatFacts() + " fishing=" + d.fishingFacts() + " acrobatics=" + d.acrobaticsFacts()));
-        sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
+        sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " in-flight=" + players.inFlightWriteCount() + " detached=" + players.detachedPendingCount() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
+        if (productSchema != null) sender.sendMessage(Component.text("Product schema: " + productSchema.state() + " rows=" + productSchema.fingerprint().progressRows() + " backup=" + productMigrationBackup));
         sender.sendMessage(Component.text("Core events: " + eventMetrics));
         sender.sendMessage(Component.text("Core origin: " + origin));
         var m = migration.status();
-        sender.sendMessage(Component.text("Migration: " + m.state() + " source=" + m.source() + " exists=" + m.exists()));
+        sender.sendMessage(Component.text("mcMMO migration: " + m.state() + " source=" + m.source() + " exists=" + m.exists()));
     }
 
     public void backup(CommandSender sender) {
@@ -256,7 +293,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         ModuleRegistry.RegistrationResult result = core.modules().register(new ModuleRegistry.ModuleDescriptor(
             "skills", "PlexonSkills", getName(), getPluginMeta().getVersion(), this,
             ModuleRegistry.ModuleVersionRange.parse(">=2.0 <3.0"),
-            Set.of("skills", "progression", "active-abilities", "milestones", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
+            Set.of("skills", "progression", "active-abilities", "milestones", "block-break-consumer", "sqlite-persistence", "schema-v2-migration", "public-api-2.0", "placeholderapi"),
             state, detail, Instant.now()));
         if (!result.success()) throw new IllegalStateException("Core module registration failed: " + result.message());
     }

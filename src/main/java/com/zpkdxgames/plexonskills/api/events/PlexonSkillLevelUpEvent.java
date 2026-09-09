@@ -7,6 +7,7 @@ import org.bukkit.event.HandlerList;
 
 import java.util.Objects;
 
+/** Synchronous post-mutation event fired when one XP mutation increases the skill level. */
 public final class PlexonSkillLevelUpEvent extends Event {
     private static final HandlerList HANDLERS = new HandlerList();
     private final Player player;
@@ -23,6 +24,11 @@ public final class PlexonSkillLevelUpEvent extends Event {
     public Player player() { return player; } public SkillType skill() { return skill; }
     public int oldLevel() { return oldLevel; } public int newLevel() { return newLevel; }
     public long totalXp() { return totalXp; } public String source() { return source; }
+
+    public Player getPlayer() { return player; } public SkillType getSkill() { return skill; }
+    public int getOldLevel() { return oldLevel; } public int getNewLevel() { return newLevel; }
+    public long getTotalXp() { return totalXp; } public String getSource() { return source; }
+
     @Override public HandlerList getHandlers() { return HANDLERS; }
     public static HandlerList getHandlerList() { return HANDLERS; }
 }

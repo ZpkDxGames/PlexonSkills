@@ -20,6 +20,8 @@ public final class PlexonSkillMilestoneEvent extends Event {
 
     public Player player() { return player; }
     public MilestoneDefinition milestone() { return milestone; }
+    public Player getPlayer() { return player; }
+    public MilestoneDefinition getMilestone() { return milestone; }
 
     @Override public HandlerList getHandlers() { return HANDLERS; }
     public static HandlerList getHandlerList() { return HANDLERS; }

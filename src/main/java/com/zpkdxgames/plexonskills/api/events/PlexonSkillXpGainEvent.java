@@ -8,6 +8,10 @@ import org.bukkit.event.HandlerList;
 
 import java.util.Objects;
 
+/**
+ * Synchronous, cancellable pre-mutation XP event. Cancelling prevents the authoritative XP write.
+ * Existing compact accessors are retained; JavaBean accessors are provided for integrations.
+ */
 public final class PlexonSkillXpGainEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
     private final Player player;
@@ -28,6 +32,7 @@ public final class PlexonSkillXpGainEvent extends Event implements Cancellable {
         this.currentLevel = currentLevel;
         this.transactionId = transactionId;
     }
+
     public Player player() { return player; }
     public SkillType skill() { return skill; }
     public long amount() { return amount; }
@@ -35,6 +40,15 @@ public final class PlexonSkillXpGainEvent extends Event implements Cancellable {
     public long projectedTotalXp() { return projectedTotalXp; }
     public int currentLevel() { return currentLevel; }
     public long transactionId() { return transactionId; }
+
+    public Player getPlayer() { return player; }
+    public SkillType getSkill() { return skill; }
+    public long getAmount() { return amount; }
+    public String getSource() { return source; }
+    public long getProjectedTotalXp() { return projectedTotalXp; }
+    public int getCurrentLevel() { return currentLevel; }
+    public long getTransactionId() { return transactionId; }
+
     @Override public boolean isCancelled() { return cancelled; }
     @Override public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }
     @Override public HandlerList getHandlers() { return HANDLERS; }
