@@ -78,6 +78,11 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
     public synchronized ActivationResult activate(Player player, SkillType skill, int level) {
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Ability activation requires primary thread");
         View before = view(player.getUniqueId(), skill, level);
+        RuntimeSettings runtime = settings.get();
+        if (!plugin.isEnabled() || !player.isValid() || player.isDead() || !runtime.allows(player.getWorld().getName(), player.getGameMode())) {
+            diagnostics.abilityRejected();
+            return new ActivationResult(false, before, "Abilities are unavailable in your current state or world.");
+        }
         if (!player.hasPermission("plexonskills.abilities")) {
             diagnostics.abilityRejected();
             return new ActivationResult(false, before, "You do not have permission to activate skill abilities.");

@@ -24,6 +24,7 @@ public record RuntimeSettings(
     MigrationMode migrationMode,
     boolean rejectUnknownOrigin,
     boolean allowPvp,
+    AntiExploitPolicy antiExploit,
     Set<GameMode> allowedGameModes,
     WorldPolicy worldPolicy,
     boolean actionbar,
@@ -34,6 +35,7 @@ public record RuntimeSettings(
 ) {
     public RuntimeSettings {
         allowedGameModes = Set.copyOf(allowedGameModes);
+        if (antiExploit == null) throw new IllegalArgumentException("antiExploit must be present");
         if (flushIntervalTicks < 20) throw new IllegalArgumentException("flush interval must be >= 20 ticks");
         if (shutdownTimeoutSeconds < 1 || shutdownTimeoutSeconds > 30) throw new IllegalArgumentException("shutdown timeout must be 1..30 seconds");
     }
@@ -53,6 +55,27 @@ public record RuntimeSettings(
         MigrationMode migrationMode = MigrationMode.parse(config.getString("migration.mcmmo.mode", "SHADOW"));
         boolean rejectUnknown = "REJECT".equalsIgnoreCase(config.getString("anti-exploit.block-origin.unknown-policy", "REJECT"));
         boolean allowPvp = config.getBoolean("anti-exploit.combat.allow-pvp", false);
+
+        AntiExploitPolicy.FarmingPolicy farmingPolicy = new AntiExploitPolicy.FarmingPolicy(
+            AntiExploitPolicy.PlantedCropPolicy.parse(config.getString("anti-exploit.farming.player-planted-policy", "MATURE_ONLY")),
+            config.getBoolean("anti-exploit.farming.allow-unknown-origin", false)
+        );
+        AntiExploitPolicy.CombatPolicy combatPolicy = new AntiExploitPolicy.CombatPolicy(
+            config.getBoolean("anti-exploit.combat.exclude-npcs", true),
+            config.getDouble("anti-exploit.combat.spawner-xp-multiplier", 0.25),
+            config.getDouble("anti-exploit.combat.breeding-xp-multiplier", 0.50),
+            config.getDouble("anti-exploit.combat.custom-xp-multiplier", 0.0),
+            config.getLong("anti-exploit.combat.same-target-minimum-interval-ms", 250L)
+        );
+        AntiExploitPolicy antiExploit = new AntiExploitPolicy(
+            farmingPolicy,
+            combatPolicy,
+            config.getLong("anti-exploit.fishing.minimum-catch-interval-ms", 1_000L),
+            config.getLong("anti-exploit.acrobatics.minimum-event-interval-ms", 1_500L),
+            config.getLong("anti-exploit.repair.minimum-event-interval-ms", 250L),
+            config.getLong("anti-exploit.alchemy.attribution-window-ms", 120_000L)
+        );
+
         EnumSet<GameMode> gameModes = EnumSet.noneOf(GameMode.class);
         for (String raw : config.getStringList("anti-exploit.game-modes")) {
             try { gameModes.add(GameMode.valueOf(raw.toUpperCase(Locale.ROOT))); }
@@ -64,7 +87,7 @@ public record RuntimeSettings(
         for (String world : config.getStringList("worlds.values")) worlds.add(world.toLowerCase(Locale.ROOT));
         WorldPolicy worldPolicy = new WorldPolicy(WorldMode.valueOf(worldMode.toUpperCase(Locale.ROOT)), Set.copyOf(worlds));
         return new RuntimeSettings(
-            epoch, registry, curve, abilities, milestones, migrationMode, rejectUnknown, allowPvp, gameModes, worldPolicy,
+            epoch, registry, curve, abilities, milestones, migrationMode, rejectUnknown, allowPvp, antiExploit, gameModes, worldPolicy,
             config.getBoolean("feedback.actionbar", true),
             Math.max(1, config.getInt("feedback.actionbar-coalesce-ticks", 8)),
             config.getBoolean("feedback.level-up-title", true),
