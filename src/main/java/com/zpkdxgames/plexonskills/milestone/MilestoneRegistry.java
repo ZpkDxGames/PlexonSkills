@@ -84,7 +84,9 @@ public final class MilestoneRegistry {
     static int scaledLevel(int maximumLevel, double progress) {
         int max = Math.max(1, maximumLevel);
         if (progress >= 1.0) return max;
-        return Math.max(1, Math.min(max, 1 + (int) Math.floor((max - 1) * progress)));
+        // Level 1 is the zero-progress baseline. Fractional milestones advance from that baseline,
+        // then clamp to the configured maximum so 10% of a 1000-level curve unlocks at level 101.
+        return Math.max(1, Math.min(max, 1 + (int) Math.floor(max * progress)));
     }
 
     private static String text(Map<?, ?> map, String key, String fallback) {
