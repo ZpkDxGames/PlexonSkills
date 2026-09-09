@@ -3,12 +3,14 @@ package com.zpkdxgames.plexonskills;
 import com.zpkdxgames.plexoncore.api.PlexonCoreAPI;
 import com.zpkdxgames.plexoncore.module.ModuleRegistry;
 import com.zpkdxgames.plexoncore.persistence.SqliteService;
+import com.zpkdxgames.plexonskills.ability.AbilityRuntime;
 import com.zpkdxgames.plexonskills.api.PlexonSkillsAPI;
 import com.zpkdxgames.plexonskills.api.PlexonSkillsApiImpl;
 import com.zpkdxgames.plexonskills.command.SkillsAdminCommand;
 import com.zpkdxgames.plexonskills.command.SkillsCommand;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
+import com.zpkdxgames.plexonskills.gui.AbilityMenuBridge;
 import com.zpkdxgames.plexonskills.gui.SkillsMenu;
 import com.zpkdxgames.plexonskills.migration.McMmoMigrationService;
 import com.zpkdxgames.plexonskills.persistence.SkillsRepository;
@@ -43,6 +45,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     private PlayerSkillsService players;
     private SkillProgressionService progression;
     private ProgressFeedback feedback;
+    private AbilityRuntime abilities;
     private CoreBlockSkillsRuntime blockRuntime;
     private PlexonSkillsApiImpl api;
     private McMmoMigrationService migration;
@@ -63,19 +66,24 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
 
             players = new PlayerSkillsService(this, repository, runtime::get, diagnostics);
             feedback = new ProgressFeedback(this, runtime::get);
-            progression = new SkillProgressionService(players, runtime::get, diagnostics, feedback);
+            abilities = new AbilityRuntime(this, runtime::get, diagnostics);
+            progression = new SkillProgressionService(players, runtime::get, diagnostics, feedback, abilities);
             api = new PlexonSkillsApiImpl(players, progression, runtime::get);
             migration = new McMmoMigrationService(this, core, repository);
             blockRuntime = new CoreBlockSkillsRuntime(core, runtime::get, progression, diagnostics);
 
             Bukkit.getServicesManager().register(PlexonSkillsAPI.class, api, this, ServicePriority.Normal);
             feedback.start();
+            abilities.start();
             blockRuntime.rebuild();
 
             GameplayListener gameplay = new GameplayListener(runtime::get, progression, players, diagnostics);
             SkillsMenu menu = new SkillsMenu(this, api, runtime::get, repository);
+            AbilityMenuBridge abilityMenu = new AbilityMenuBridge(api, abilities);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
+            Bukkit.getPluginManager().registerEvents(abilities, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
+            Bukkit.getPluginManager().registerEvents(abilityMenu, this);
 
             SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu);
             getCommand("skills").setExecutor(skillsCommand);
@@ -104,6 +112,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     public void onDisable() {
         if (flushTask != null) { flushTask.cancel(); flushTask = null; }
         if (blockRuntime != null) blockRuntime.close();
+        if (abilities != null) abilities.close();
         if (feedback != null) feedback.close();
         if (players != null && runtime.get() != null) players.shutdown(Duration.ofSeconds(runtime.get().shutdownTimeoutSeconds()));
         if (repository != null) repository.close();
@@ -141,6 +150,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         sender.sendMessage(Component.text("Runtime: epoch=" + runtime.get().epoch() + " mode=" + runtime.get().migrationMode() + " block-routes=" + runtime.get().skills().subscribedMaterials().size()));
         sender.sendMessage(Component.text("Profiles: loaded=" + players.loadedCount() + " dirty=" + players.dirtyCount()));
         sender.sendMessage(Component.text("XP: grants=" + d.xpGrants() + " rejected=" + d.xpRejected() + " shadow=" + d.shadowContributions() + " levelups=" + d.levelUps()));
+        sender.sendMessage(Component.text("Abilities: active-players=" + abilities.activePlayers() + " activated=" + d.abilityActivations() + " rejected=" + d.abilityRejected() + " ended=" + d.abilityEnded()));
         sender.sendMessage(Component.text("Anti-exploit: origin-rejected=" + d.originRejected() + " profile-not-ready=" + d.profileNotReady()));
         sender.sendMessage(Component.text("Events: block=" + d.blockFacts() + " combat=" + d.combatFacts() + " fishing=" + d.fishingFacts() + " acrobatics=" + d.acrobaticsFacts()));
         sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
@@ -177,7 +187,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         ModuleRegistry.RegistrationResult result = core.modules().register(new ModuleRegistry.ModuleDescriptor(
             "skills", "PlexonSkills", getName(), getPluginMeta().getVersion(), this,
             ModuleRegistry.ModuleVersionRange.parse(">=2.0 <3.0"),
-            Set.of("skills", "progression", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
+            Set.of("skills", "progression", "active-abilities", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
             state, detail, Instant.now()));
         if (!result.success()) throw new IllegalStateException("Core module registration failed: " + result.message());
     }

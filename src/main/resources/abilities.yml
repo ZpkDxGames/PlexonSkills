@@ -1,4 +1,123 @@
+# PlexonSkills 2.0 active abilities
+# Active abilities are progression boosts, not direct economy/item generators.
+# Cooldown includes the active duration. Values are validated atomically on reload.
 abilities:
-  enabled: false
-  # 1.0.0 ships the ability framework disabled by default until production balancing is accepted.
-  # This prevents duplicate active mechanics while mcMMO is still present during SHADOW validation.
+  enabled: true
+  skills:
+    MINING:
+      id: ore_focus
+      name: Ore Focus
+      description: Heightens mining focus for a short burst of bonus Mining XP.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 15
+      cooldown-seconds: 90
+      xp-multiplier: 1.25
+    WOODCUTTING:
+      id: timber_focus
+      name: Timber Focus
+      description: Builds momentum while harvesting wood and increases Woodcutting XP.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 15
+      cooldown-seconds: 90
+      xp-multiplier: 1.25
+    EXCAVATION:
+      id: deep_focus
+      name: Deep Focus
+      description: Sharpens excavation rhythm for a short burst of bonus Excavation XP.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 15
+      cooldown-seconds: 90
+      xp-multiplier: 1.25
+    FARMING:
+      id: harvest_focus
+      name: Harvest Focus
+      description: Rewards a concentrated harvesting window with bonus Farming XP.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 15
+      cooldown-seconds: 90
+      xp-multiplier: 1.20
+    FISHING:
+      id: anglers_focus
+      name: Angler's Focus
+      description: Increases Fishing XP earned during a short focused fishing window.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 18
+      cooldown-seconds: 100
+      xp-multiplier: 1.20
+    SWORDS:
+      id: blade_focus
+      name: Blade Focus
+      description: Increases valid Swords XP while the combat focus is active.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 12
+      cooldown-seconds: 100
+      xp-multiplier: 1.20
+    AXES:
+      id: cleaver_focus
+      name: Cleaver Focus
+      description: Increases valid Axes XP during a short combat focus.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 12
+      cooldown-seconds: 100
+      xp-multiplier: 1.20
+    ARCHERY:
+      id: marksman_focus
+      name: Marksman's Focus
+      description: Increases valid Archery XP during a short precision window.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 14
+      cooldown-seconds: 100
+      xp-multiplier: 1.20
+    UNARMED:
+      id: discipline_focus
+      name: Discipline Focus
+      description: Increases valid Unarmed XP while disciplined focus is active.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 12
+      cooldown-seconds: 100
+      xp-multiplier: 1.20
+    TAMING:
+      id: bond_focus
+      name: Bond Focus
+      description: Strengthens progression gained from valid companion combat activity.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 16
+      cooldown-seconds: 110
+      xp-multiplier: 1.20
+    ACROBATICS:
+      id: flow_state
+      name: Flow State
+      description: Increases valid Acrobatics XP during a short movement focus.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 16
+      cooldown-seconds: 90
+      xp-multiplier: 1.20
+    REPAIR:
+      id: artisan_focus
+      name: Artisan Focus
+      description: Increases Repair XP gained during a short workstation focus.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 18
+      cooldown-seconds: 120
+      xp-multiplier: 1.20
+    ALCHEMY:
+      id: alchemist_focus
+      name: Alchemist Focus
+      description: Increases Alchemy XP gained during a short brewing focus.
+      enabled: true
+      unlock-level: 25
+      duration-seconds: 18
+      cooldown-seconds: 120
+      xp-multiplier: 1.20

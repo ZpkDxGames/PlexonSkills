@@ -1,5 +1,6 @@
 package com.zpkdxgames.plexonskills.skill;
 
+import com.zpkdxgames.plexonskills.ability.AbilityRuntime;
 import com.zpkdxgames.plexonskills.api.events.PlexonSkillLevelUpEvent;
 import com.zpkdxgames.plexonskills.api.events.PlexonSkillXpGainEvent;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
@@ -22,10 +23,13 @@ public final class SkillProgressionService {
     private final Supplier<RuntimeSettings> settings;
     private final SkillsDiagnostics diagnostics;
     private final ProgressFeedback feedback;
+    private final AbilityRuntime abilities;
     private final AtomicLong transactions=new AtomicLong();
     private final Map<UUID,long[]> shadowXp=new HashMap<>();
 
-    public SkillProgressionService(PlayerSkillsService players,Supplier<RuntimeSettings> settings,SkillsDiagnostics diagnostics,ProgressFeedback feedback){this.players=players;this.settings=settings;this.diagnostics=diagnostics;this.feedback=feedback;}
+    public SkillProgressionService(PlayerSkillsService players,Supplier<RuntimeSettings> settings,SkillsDiagnostics diagnostics,ProgressFeedback feedback,AbilityRuntime abilities){
+        this.players=players;this.settings=settings;this.diagnostics=diagnostics;this.feedback=feedback;this.abilities=abilities;
+    }
 
     public boolean grant(Player player,SkillType skill,long amount,String source){
         if(!Bukkit.isPrimaryThread())throw new IllegalStateException("XP grants require primary thread");
@@ -36,12 +40,14 @@ public final class SkillProgressionService {
         if(mode==MigrationMode.DISABLED){diagnostics.xpRejected();return false;}
         PlayerSkillsProfile profile=players.profile(player.getUniqueId());
         if(profile==null || !players.ready(player.getUniqueId())){diagnostics.profileNotReady();return false;}
+
+        long effectiveAmount=scale(amount,abilities.xpMultiplier(player.getUniqueId(),skill));
         if(mode==MigrationMode.SHADOW){
             long[] ledger=shadowXp.computeIfAbsent(player.getUniqueId(),ignored->new long[SkillType.values().length]);
-            int idx=skill.ordinal(); ledger[idx]=saturatedAdd(ledger[idx],amount); diagnostics.shadowContribution(); return true;
+            int idx=skill.ordinal(); ledger[idx]=saturatedAdd(ledger[idx],effectiveAmount); diagnostics.shadowContribution(); return true;
         }
         long current=profile.totalXp(skill);
-        long projected=runtime.curve().clampXp(saturatedAdd(current,amount));
+        long projected=runtime.curve().clampXp(saturatedAdd(current,effectiveAmount));
         long tx=transactions.incrementAndGet();
         PlexonSkillXpGainEvent event=new PlexonSkillXpGainEvent(player,skill,projected-current,source,projected,profile.level(skill),tx);
         Bukkit.getPluginManager().callEvent(event);
@@ -69,5 +75,14 @@ public final class SkillProgressionService {
 
     public long shadowXp(UUID playerId,SkillType skill){long[] values=shadowXp.get(playerId);return values==null?0L:values[skill.ordinal()];}
     public void clearShadow(){shadowXp.clear();}
+
+    static long scale(long amount,double multiplier){
+        if(amount<=0)return 0L;
+        if(multiplier<=1.0)return amount;
+        double scaled=amount*multiplier;
+        if(!Double.isFinite(scaled)||scaled>=Long.MAX_VALUE)return Long.MAX_VALUE;
+        return Math.max(amount,Math.round(scaled));
+    }
+
     private static long saturatedAdd(long a,long b){if(b>0&&a>Long.MAX_VALUE-b)return Long.MAX_VALUE;return a+b;}
 }
