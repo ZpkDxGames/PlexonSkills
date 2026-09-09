@@ -2,6 +2,7 @@ package com.zpkdxgames.plexonskills.config;
 
 import com.zpkdxgames.plexonskills.ability.AbilityRegistry;
 import com.zpkdxgames.plexonskills.migration.MigrationMode;
+import com.zpkdxgames.plexonskills.milestone.MilestoneRegistry;
 import com.zpkdxgames.plexonskills.skill.SkillRegistry;
 import com.zpkdxgames.plexonskills.skill.XpCurve;
 import org.bukkit.GameMode;
@@ -19,6 +20,7 @@ public record RuntimeSettings(
     SkillRegistry skills,
     XpCurve curve,
     AbilityRegistry abilities,
+    MilestoneRegistry milestones,
     MigrationMode migrationMode,
     boolean rejectUnknownOrigin,
     boolean allowPvp,
@@ -47,6 +49,7 @@ public record RuntimeSettings(
         double exponent = config.getDouble("progression.curve.exponent", 1.45);
         XpCurve curve = new XpCurve(maximum, base, exponent);
         AbilityRegistry abilities = AbilityRegistry.load(new File(plugin.getDataFolder(), "abilities.yml"), maximum);
+        MilestoneRegistry milestones = MilestoneRegistry.load(new File(plugin.getDataFolder(), "rewards.yml"), maximum);
         MigrationMode migrationMode = MigrationMode.parse(config.getString("migration.mcmmo.mode", "SHADOW"));
         boolean rejectUnknown = "REJECT".equalsIgnoreCase(config.getString("anti-exploit.block-origin.unknown-policy", "REJECT"));
         boolean allowPvp = config.getBoolean("anti-exploit.combat.allow-pvp", false);
@@ -61,7 +64,7 @@ public record RuntimeSettings(
         for (String world : config.getStringList("worlds.values")) worlds.add(world.toLowerCase(Locale.ROOT));
         WorldPolicy worldPolicy = new WorldPolicy(WorldMode.valueOf(worldMode.toUpperCase(Locale.ROOT)), Set.copyOf(worlds));
         return new RuntimeSettings(
-            epoch, registry, curve, abilities, migrationMode, rejectUnknown, allowPvp, gameModes, worldPolicy,
+            epoch, registry, curve, abilities, milestones, migrationMode, rejectUnknown, allowPvp, gameModes, worldPolicy,
             config.getBoolean("feedback.actionbar", true),
             Math.max(1, config.getInt("feedback.actionbar-coalesce-ticks", 8)),
             config.getBoolean("feedback.level-up-title", true),

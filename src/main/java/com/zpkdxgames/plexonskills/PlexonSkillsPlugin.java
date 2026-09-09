@@ -11,6 +11,7 @@ import com.zpkdxgames.plexonskills.command.SkillsCommand;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
 import com.zpkdxgames.plexonskills.gui.AbilityMenuBridge;
+import com.zpkdxgames.plexonskills.gui.MilestoneMenuBridge;
 import com.zpkdxgames.plexonskills.gui.SkillsMenu;
 import com.zpkdxgames.plexonskills.migration.McMmoMigrationService;
 import com.zpkdxgames.plexonskills.persistence.SkillsRepository;
@@ -80,10 +81,12 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             GameplayListener gameplay = new GameplayListener(runtime::get, progression, players, diagnostics);
             SkillsMenu menu = new SkillsMenu(this, api, runtime::get, repository);
             AbilityMenuBridge abilityMenu = new AbilityMenuBridge(api, abilities);
+            MilestoneMenuBridge milestoneMenu = new MilestoneMenuBridge(api, runtime::get);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
             Bukkit.getPluginManager().registerEvents(abilities, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
             Bukkit.getPluginManager().registerEvents(abilityMenu, this);
+            Bukkit.getPluginManager().registerEvents(milestoneMenu, this);
 
             SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu);
             getCommand("skills").setExecutor(skillsCommand);
@@ -151,6 +154,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         sender.sendMessage(Component.text("Profiles: loaded=" + players.loadedCount() + " dirty=" + players.dirtyCount()));
         sender.sendMessage(Component.text("XP: grants=" + d.xpGrants() + " rejected=" + d.xpRejected() + " shadow=" + d.shadowContributions() + " levelups=" + d.levelUps()));
         sender.sendMessage(Component.text("Abilities: active-players=" + abilities.activePlayers() + " activated=" + d.abilityActivations() + " rejected=" + d.abilityRejected() + " ended=" + d.abilityEnded()));
+        sender.sendMessage(Component.text("Milestones: reached=" + d.milestonesReached() + " templates=" + runtime.get().milestones().milestones(com.zpkdxgames.plexonskills.skill.SkillType.MINING).size()));
         sender.sendMessage(Component.text("Anti-exploit: origin-rejected=" + d.originRejected() + " profile-not-ready=" + d.profileNotReady()));
         sender.sendMessage(Component.text("Events: block=" + d.blockFacts() + " combat=" + d.combatFacts() + " fishing=" + d.fishingFacts() + " acrobatics=" + d.acrobaticsFacts()));
         sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
@@ -187,7 +191,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         ModuleRegistry.RegistrationResult result = core.modules().register(new ModuleRegistry.ModuleDescriptor(
             "skills", "PlexonSkills", getName(), getPluginMeta().getVersion(), this,
             ModuleRegistry.ModuleVersionRange.parse(">=2.0 <3.0"),
-            Set.of("skills", "progression", "active-abilities", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
+            Set.of("skills", "progression", "active-abilities", "milestones", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
             state, detail, Instant.now()));
         if (!result.success()) throw new IllegalStateException("Core module registration failed: " + result.message());
     }

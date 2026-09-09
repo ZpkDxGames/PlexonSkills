@@ -2,13 +2,16 @@ package com.zpkdxgames.plexonskills.skill;
 
 import com.zpkdxgames.plexonskills.ability.AbilityRuntime;
 import com.zpkdxgames.plexonskills.api.events.PlexonSkillLevelUpEvent;
+import com.zpkdxgames.plexonskills.api.events.PlexonSkillMilestoneEvent;
 import com.zpkdxgames.plexonskills.api.events.PlexonSkillXpGainEvent;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
 import com.zpkdxgames.plexonskills.migration.MigrationMode;
+import com.zpkdxgames.plexonskills.milestone.MilestoneDefinition;
 import com.zpkdxgames.plexonskills.player.PlayerSkillsProfile;
 import com.zpkdxgames.plexonskills.player.PlayerSkillsService;
 import com.zpkdxgames.plexonskills.runtime.ProgressFeedback;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -41,7 +44,9 @@ public final class SkillProgressionService {
         PlayerSkillsProfile profile=players.profile(player.getUniqueId());
         if(profile==null || !players.ready(player.getUniqueId())){diagnostics.profileNotReady();return false;}
 
-        long effectiveAmount=scale(amount,abilities.xpMultiplier(player.getUniqueId(),skill));
+        int currentLevel=profile.level(skill);
+        double multiplier=abilities.xpMultiplier(player.getUniqueId(),skill)*runtime.milestones().passiveMultiplier(skill,currentLevel);
+        long effectiveAmount=scale(amount,multiplier);
         if(mode==MigrationMode.SHADOW){
             long[] ledger=shadowXp.computeIfAbsent(player.getUniqueId(),ignored->new long[SkillType.values().length]);
             int idx=skill.ordinal(); ledger[idx]=saturatedAdd(ledger[idx],effectiveAmount); diagnostics.shadowContribution(); return true;
@@ -49,7 +54,7 @@ public final class SkillProgressionService {
         long current=profile.totalXp(skill);
         long projected=runtime.curve().clampXp(saturatedAdd(current,effectiveAmount));
         long tx=transactions.incrementAndGet();
-        PlexonSkillXpGainEvent event=new PlexonSkillXpGainEvent(player,skill,projected-current,source,projected,profile.level(skill),tx);
+        PlexonSkillXpGainEvent event=new PlexonSkillXpGainEvent(player,skill,projected-current,source,projected,currentLevel,tx);
         Bukkit.getPluginManager().callEvent(event);
         if(event.isCancelled()){diagnostics.xpRejected();return false;}
         PlayerSkillsProfile.Mutation mutation=players.addXp(player.getUniqueId(),skill,event.amount());
@@ -59,6 +64,7 @@ public final class SkillProgressionService {
             diagnostics.levelUp();
             Bukkit.getPluginManager().callEvent(new PlexonSkillLevelUpEvent(player,skill,mutation.oldLevel(),mutation.newLevel(),mutation.newXp(),source));
             feedback.levelUp(player,skill,mutation);
+            fireMilestones(player,skill,mutation.oldLevel(),mutation.newLevel());
         }
         return true;
     }
@@ -69,12 +75,25 @@ public final class SkillProgressionService {
         PlayerSkillsProfile profile=players.profile(player.getUniqueId()); if(profile==null||!players.ready(player.getUniqueId()))return false;
         PlayerSkillsProfile.Mutation mutation=players.setXp(player.getUniqueId(),skill,runtime.curve().clampXp(amount));
         if(mutation==null||!mutation.changed())return false;
-        if(mutation.leveledUp())Bukkit.getPluginManager().callEvent(new PlexonSkillLevelUpEvent(player,skill,mutation.oldLevel(),mutation.newLevel(),mutation.newXp(),source));
+        if(mutation.leveledUp()){
+            Bukkit.getPluginManager().callEvent(new PlexonSkillLevelUpEvent(player,skill,mutation.oldLevel(),mutation.newLevel(),mutation.newXp(),source));
+            fireMilestones(player,skill,mutation.oldLevel(),mutation.newLevel());
+        }
         return true;
     }
 
     public long shadowXp(UUID playerId,SkillType skill){long[] values=shadowXp.get(playerId);return values==null?0L:values[skill.ordinal()];}
     public void clearShadow(){shadowXp.clear();}
+
+    private void fireMilestones(Player player,SkillType skill,int oldLevel,int newLevel){
+        for(MilestoneDefinition milestone:settings.get().milestones().crossed(skill,oldLevel,newLevel)){
+            diagnostics.milestoneReached();
+            Bukkit.getPluginManager().callEvent(new PlexonSkillMilestoneEvent(player,milestone));
+            player.sendMessage(Component.text("✦ " + milestone.displayName() + " reached — permanent " + formatBonus(milestone.passiveXpBonus()) + " " + skill.displayName() + " XP bonus."));
+        }
+    }
+
+    private static String formatBonus(double bonus){return "+"+Math.round(bonus*100.0)+"%";}
 
     static long scale(long amount,double multiplier){
         if(amount<=0)return 0L;
