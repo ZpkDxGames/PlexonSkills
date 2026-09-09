@@ -1,0 +1,38 @@
+name: PlexonSkills
+version: '${version}'
+main: com.zpkdxgames.plexonskills.PlexonSkillsPlugin
+api-version: '26.2'
+load: POSTWORLD
+author: Tonim (ZpkDxGames)
+description: Core-native RPG skills and progression for PlexonCraft.
+website: https://github.com/ZpkDxGames/PlexonSkills
+depend:
+  - PlexonCore
+softdepend:
+  - PlaceholderAPI
+  - PlexonBlacksmith
+commands:
+  skills:
+    description: Open PlexonSkills or inspect progression.
+    usage: /skills [skill|stats|top|rank]
+    aliases: [skill]
+    permission: plexonskills.use
+  skillsadmin:
+    description: PlexonSkills administration and diagnostics.
+    usage: /skillsadmin <reload|diagnostics|setxp|setlevel|addxp|reset|backup|migrate>
+    permission: plexonskills.admin
+permissions:
+  plexonskills.use:
+    default: true
+  plexonskills.abilities:
+    default: true
+  plexonskills.admin:
+    default: op
+  plexonskills.admin.reload:
+    default: op
+  plexonskills.admin.modify:
+    default: op
+  plexonskills.admin.migrate:
+    default: op
+  plexonskills.admin.diagnostics:
+    default: op

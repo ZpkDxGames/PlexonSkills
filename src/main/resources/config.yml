@@ -1,0 +1,41 @@
+# PlexonSkills 1.0.0
+# SHADOW is the safe default while mcMMO is still present. Switch to PRIMARY only after staging.
+migration:
+  mcmmo:
+    mode: SHADOW
+    source: ''
+    strategy: PRESERVE_LEVEL
+
+progression:
+  maximum-level: 1000
+  curve:
+    type: POWER
+    base: 100
+    exponent: 1.45
+
+feedback:
+  actionbar: true
+  actionbar-coalesce-ticks: 8
+  level-up-title: true
+
+persistence:
+  flush-interval-ticks: 200
+  shutdown-timeout-seconds: 5
+
+anti-exploit:
+  block-origin:
+    enabled: true
+    unknown-policy: REJECT
+  combat:
+    allow-pvp: false
+    ignore-armor-stands: true
+  game-modes:
+    - SURVIVAL
+
+worlds:
+  mode: BLACKLIST
+  values:
+    - lobby
+
+leaderboards:
+  cache-seconds: 30

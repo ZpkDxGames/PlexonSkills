@@ -1,0 +1,85 @@
+skills:
+  MINING:
+    enabled: true
+    natural-origin: true
+    materials:
+      STONE: 1
+      DEEPSLATE: 2
+      COAL_ORE: 4
+      DEEPSLATE_COAL_ORE: 5
+      COPPER_ORE: 5
+      DEEPSLATE_COPPER_ORE: 6
+      IRON_ORE: 6
+      DEEPSLATE_IRON_ORE: 7
+      GOLD_ORE: 10
+      DEEPSLATE_GOLD_ORE: 11
+      REDSTONE_ORE: 8
+      DEEPSLATE_REDSTONE_ORE: 9
+      LAPIS_ORE: 10
+      DEEPSLATE_LAPIS_ORE: 11
+      DIAMOND_ORE: 20
+      DEEPSLATE_DIAMOND_ORE: 22
+      EMERALD_ORE: 25
+      DEEPSLATE_EMERALD_ORE: 27
+      NETHER_GOLD_ORE: 7
+      NETHER_QUARTZ_ORE: 5
+      ANCIENT_DEBRIS: 40
+  WOODCUTTING:
+    enabled: true
+    natural-origin: true
+    material-tags: [LOGS]
+    default-xp: 3
+  EXCAVATION:
+    enabled: true
+    natural-origin: true
+    materials:
+      DIRT: 1
+      COARSE_DIRT: 2
+      ROOTED_DIRT: 2
+      SAND: 1
+      RED_SAND: 2
+      GRAVEL: 2
+      CLAY: 3
+      MUD: 2
+      SOUL_SAND: 3
+      SOUL_SOIL: 3
+      SNOW_BLOCK: 2
+  FARMING:
+    enabled: true
+    natural-origin: false
+    require-mature: true
+    materials:
+      WHEAT: 4
+      CARROTS: 4
+      POTATOES: 4
+      BEETROOTS: 4
+      NETHER_WART: 5
+      COCOA: 4
+      SWEET_BERRY_BUSH: 3
+  FISHING:
+    enabled: true
+    default-xp: 12
+  SWORDS:
+    enabled: true
+    damage-xp: 1.0
+  AXES:
+    enabled: true
+    damage-xp: 1.0
+  ARCHERY:
+    enabled: true
+    damage-xp: 1.0
+  UNARMED:
+    enabled: true
+    damage-xp: 1.0
+  TAMING:
+    enabled: true
+    damage-xp: 1.0
+  ACROBATICS:
+    enabled: true
+    damage-xp: 2.0
+  REPAIR:
+    enabled: true
+    default-xp: 8
+  ALCHEMY:
+    enabled: true
+    default-xp: 12

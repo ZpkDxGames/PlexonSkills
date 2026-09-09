@@ -1,0 +1,4 @@
+abilities:
+  enabled: false
+  # 1.0.0 ships the ability framework disabled by default until production balancing is accepted.
+  # This prevents duplicate active mechanics while mcMMO is still present during SHADOW validation.
