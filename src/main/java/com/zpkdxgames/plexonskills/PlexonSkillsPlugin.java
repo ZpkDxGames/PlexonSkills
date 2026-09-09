@@ -73,7 +73,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             blockRuntime.rebuild();
 
             GameplayListener gameplay = new GameplayListener(runtime::get, progression, players, diagnostics);
-            SkillsMenu menu = new SkillsMenu(api, runtime::get);
+            SkillsMenu menu = new SkillsMenu(this, api, runtime::get, repository);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
 
