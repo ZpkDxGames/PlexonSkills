@@ -64,10 +64,19 @@ For an admin-GUI boolean mutation, the file value is also restored when the cand
 
 ## Ability/transient state
 
-Active abilities and cooldowns are intentionally transient. Reload clears transient ability state and recreates the single shared expiration task. Quit removes that player's transient ability state. Do not treat active/cooldown state as durable progression.
+Active effects and cooldown timers remain runtime state rather than durable database progression. Runtime reload intentionally resets transient ability/cooldown state and recreates the single shared expiration task.
+
+Normal player logout is different: it ends the player's active effect, but a configured cooldown deadline remains authoritative across reconnect until it expires or an administrator explicitly clears it. The shared sweep also expires cooldown-only offline state so reconnect cannot be used to bypass the configured cooldown.
 
 ## Release rollback
 
-Prerelease `v2.0.0-rc.1` is immutable. Do not overwrite RC assets. If a release-blocking problem is found, fix it on the Phase 2 branch and issue a new RC tag/release rather than replacing the old binary.
+Historical `v2.0.0-rc.1` and `v2.0.0-rc.2` assets are immutable and must never be replaced.
 
-Stable `v2.0.0` must not be published until `STAGING.md` is fully satisfied with real runtime evidence.
+The stable 2.0 rollback artifact is:
+
+- tag: `v2.0.0-rc.2`
+- source: `fd1f15205353f91e42236865b8dd6141d46b3634`
+- JAR: `PlexonSkills-2.0.0.jar`
+- SHA-256: `af31444e428d2f547ec9c8f5db49aaffeac4594efbe2c3c24e90e74dcb38bf07`
+
+If a stable release defect is found, preserve the published stable tag/assets and open a new remediation version rather than rewriting history. Live PlexonCraft deployment certification is tracked separately in `STAGING.md`; `runtime_certification=NOT_EXECUTED` in stable release provenance means only that live certification has not yet been performed.
