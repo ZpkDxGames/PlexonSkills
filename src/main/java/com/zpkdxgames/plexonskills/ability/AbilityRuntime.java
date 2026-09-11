@@ -15,8 +15,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -149,13 +150,7 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
     public synchronized void onQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         activeUntil.remove(playerId);
-        long now = System.currentTimeMillis();
-        long[] cooldown = cooldownUntil.get(playerId);
-        if (hasFutureDeadline(cooldown, now)) {
-            // Keep one zeroed active-state row so the shared sweep continues to age and
-            // eventually evict the retained cooldown while the player is offline.
-            activeUntil.put(playerId, new long[SkillType.values().length]);
-        } else {
+        if (!hasFutureDeadline(cooldownUntil.get(playerId), System.currentTimeMillis())) {
             cooldownUntil.remove(playerId);
         }
     }
@@ -163,18 +158,17 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
     private synchronized void sweep() {
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Ability sweep requires primary thread");
         long now = System.currentTimeMillis();
-        Iterator<Map.Entry<UUID, long[]>> iterator = activeUntil.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<UUID, long[]> entry = iterator.next();
-            UUID playerId = entry.getKey();
-            long[] active = entry.getValue();
+        Set<UUID> tracked = new HashSet<>(activeUntil.keySet());
+        tracked.addAll(cooldownUntil.keySet());
+        for (UUID playerId : tracked) {
+            long[] active = activeUntil.get(playerId);
             long[] cooldown = cooldownUntil.get(playerId);
             Player player = Bukkit.getPlayer(playerId);
             boolean anyActive = false;
             boolean anyCooldown = false;
             for (SkillType skill : SkillType.values()) {
                 int index = skill.ordinal();
-                if (active[index] > 0L && active[index] <= now) {
+                if (active != null && active[index] > 0L && active[index] <= now) {
                     active[index] = 0L;
                     AbilityDefinition definition = settings.get().abilities().definition(skill);
                     if (definition != null && player != null && player.isOnline()) {
@@ -183,13 +177,11 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
                     }
                     diagnostics.abilityEnded();
                 }
-                if (active[index] > now) anyActive = true;
+                if (active != null && active[index] > now) anyActive = true;
                 if (cooldown != null && cooldown[index] > now) anyCooldown = true;
             }
-            if (!anyActive && !anyCooldown) {
-                iterator.remove();
-                cooldownUntil.remove(playerId);
-            }
+            if (!anyActive) activeUntil.remove(playerId);
+            if (!anyCooldown) cooldownUntil.remove(playerId);
         }
     }
 
