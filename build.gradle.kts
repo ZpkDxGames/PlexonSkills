@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.zpkdxgames"
-version = "1.0.0"
+version = "2.0.0"
 
 java {
     toolchain {
@@ -23,7 +23,7 @@ repositories {
     maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
 }
 
-val coreJar = layout.projectDirectory.file("libs/PlexonCore-2.0.0.jar")
+val coreJar = layout.projectDirectory.file("libs/PlexonCore-2.0.4.jar")
 
 dependencies {
     compileOnly(files(coreJar))
@@ -33,6 +33,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(files(coreJar))
     testImplementation("io.papermc.paper:paper-api:26.2.build.121-stable")
 }
 
@@ -68,8 +69,8 @@ tasks.named<Jar>("jar") {
     isReproducibleFileOrder = true
 }
 
-// Compatibility alias required by the implementation specification. PlexonSkills intentionally
-// does not shade Paper/Core/PAPI and uses Core-owned SQLite, so the normal JAR is the distribution JAR.
+// PlexonSkills intentionally does not shade Paper/Core/PAPI and uses Core-owned SQLite,
+// so the normal JAR is the installable distribution JAR.
 tasks.register("shadowJar") {
     group = "build"
     description = "Builds the installable PlexonSkills JAR (no runtime shading required)."
@@ -92,6 +93,7 @@ tasks.register("verifyDistribution") {
         check(names.none { it.contains("com/zpkdxgames/plexoncore/") }) { "PlexonCore classes must not be bundled" }
         check(names.none { it.contains("org/bukkit/") || it.contains("io/papermc/") }) { "Paper API classes must not be bundled" }
         check(names.none { it.contains("me/clip/placeholderapi/") }) { "PlaceholderAPI classes must not be bundled" }
+        check(names.none { it.contains("/test/") || it.endsWith("Test.class") }) { "Test/debug classes must not be bundled" }
         println("Distribution verification passed: ${jarFile.name} (${jarFile.length()} bytes)")
     }
 }

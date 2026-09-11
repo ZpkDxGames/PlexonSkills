@@ -3,12 +3,17 @@ package com.zpkdxgames.plexonskills;
 import com.zpkdxgames.plexoncore.api.PlexonCoreAPI;
 import com.zpkdxgames.plexoncore.module.ModuleRegistry;
 import com.zpkdxgames.plexoncore.persistence.SqliteService;
+import com.zpkdxgames.plexonskills.ability.AbilityRuntime;
 import com.zpkdxgames.plexonskills.api.PlexonSkillsAPI;
 import com.zpkdxgames.plexonskills.api.PlexonSkillsApiImpl;
 import com.zpkdxgames.plexonskills.command.SkillsAdminCommand;
 import com.zpkdxgames.plexonskills.command.SkillsCommand;
 import com.zpkdxgames.plexonskills.config.RuntimeSettings;
 import com.zpkdxgames.plexonskills.diagnostics.SkillsDiagnostics;
+import com.zpkdxgames.plexonskills.gui.AbilityMenuBridge;
+import com.zpkdxgames.plexonskills.gui.AdminSkillsMenu;
+import com.zpkdxgames.plexonskills.gui.MilestoneMenuBridge;
+import com.zpkdxgames.plexonskills.gui.PassiveMenuBridge;
 import com.zpkdxgames.plexonskills.gui.SkillsMenu;
 import com.zpkdxgames.plexonskills.migration.McMmoMigrationService;
 import com.zpkdxgames.plexonskills.persistence.SkillsRepository;
@@ -21,11 +26,14 @@ import com.zpkdxgames.plexonskills.skill.SkillProgressionService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,10 +51,13 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     private PlayerSkillsService players;
     private SkillProgressionService progression;
     private ProgressFeedback feedback;
+    private AbilityRuntime abilities;
     private CoreBlockSkillsRuntime blockRuntime;
     private PlexonSkillsApiImpl api;
     private McMmoMigrationService migration;
     private BukkitTask flushTask;
+    private volatile SkillsRepository.SchemaInspection productSchema;
+    private volatile Path productMigrationBackup;
 
     @Override
     public void onEnable() {
@@ -57,42 +68,76 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             RuntimeSettings initial = RuntimeSettings.load(this, epoch.incrementAndGet());
             runtime.set(initial);
 
-            SqliteService.SqliteDatabase database = core.persistence().open(getDataFolder().toPath().resolve("skills.db"));
+            Path databasePath = getDataFolder().toPath().resolve("skills.db");
+            SqliteService.SqliteDatabase database = core.persistence().open(databasePath);
             repository = new SkillsRepository(database);
-            repository.initialize().get(10, TimeUnit.SECONDS);
+            SkillsRepository.SchemaInspection before = repository.inspectSchema().get(10, TimeUnit.SECONDS);
+            if (before.state() == SkillsRepository.SchemaState.INCOMPATIBLE) {
+                throw new IllegalStateException("Unsafe PlexonSkills schema refused: " + before.detail());
+            }
+            if (before.state() == SkillsRepository.SchemaState.LEGACY_1_X) {
+                Path destination = getDataFolder().toPath().resolve("backups").resolve("skills-pre-2.0-" + System.currentTimeMillis() + ".db");
+                productMigrationBackup = core.scheduler().supplyIo(() -> {
+                    try { return repository.backup(destination); }
+                    catch (Exception ex) { throw new IllegalStateException("Failed to create mandatory pre-2.0 backup", ex); }
+                }).get(15, TimeUnit.SECONDS);
+            }
+            repository.initialize(initial.curve()).get(15, TimeUnit.SECONDS);
+            SkillsRepository.SchemaInspection after = repository.inspectSchema().get(10, TimeUnit.SECONDS);
+            if (after.state() != SkillsRepository.SchemaState.CURRENT_2_0) {
+                throw new IllegalStateException("PlexonSkills schema migration did not reach product schema 2: " + after.detail());
+            }
+            if (before.state() != SkillsRepository.SchemaState.EMPTY && !before.fingerprint().equals(after.fingerprint())) {
+                throw new IllegalStateException("Canonical XP invariant failed during 2.0 migration: before=" + before.fingerprint() + " after=" + after.fingerprint());
+            }
+            productSchema = after;
+            if (productMigrationBackup != null) {
+                repository.writeMigrationMeta("pre_2_0_backup", productMigrationBackup.toString()).get(5, TimeUnit.SECONDS);
+            }
 
             players = new PlayerSkillsService(this, repository, runtime::get, diagnostics);
             feedback = new ProgressFeedback(this, runtime::get);
-            progression = new SkillProgressionService(players, runtime::get, diagnostics, feedback);
-            api = new PlexonSkillsApiImpl(players, progression, runtime::get);
+            abilities = new AbilityRuntime(this, runtime::get, diagnostics);
+            progression = new SkillProgressionService(players, runtime::get, diagnostics, feedback, abilities);
+            api = new PlexonSkillsApiImpl(players, progression, runtime::get, abilities);
             migration = new McMmoMigrationService(this, core, repository);
             blockRuntime = new CoreBlockSkillsRuntime(core, runtime::get, progression, diagnostics);
 
             Bukkit.getServicesManager().register(PlexonSkillsAPI.class, api, this, ServicePriority.Normal);
             feedback.start();
+            abilities.start();
             blockRuntime.rebuild();
 
             GameplayListener gameplay = new GameplayListener(runtime::get, progression, players, diagnostics);
-            SkillsMenu menu = new SkillsMenu(api, runtime::get);
+            SkillsMenu menu = new SkillsMenu(this, api, runtime::get, repository);
+            AdminSkillsMenu adminMenu = new AdminSkillsMenu(this, api, runtime::get, abilities);
+            AbilityMenuBridge abilityMenu = new AbilityMenuBridge(api, abilities);
+            MilestoneMenuBridge milestoneMenu = new MilestoneMenuBridge(api, runtime::get);
+            PassiveMenuBridge passiveMenu = new PassiveMenuBridge(api, runtime::get, abilities);
             Bukkit.getPluginManager().registerEvents(gameplay, this);
+            Bukkit.getPluginManager().registerEvents(abilities, this);
             Bukkit.getPluginManager().registerEvents(menu, this);
+            Bukkit.getPluginManager().registerEvents(adminMenu, this);
+            Bukkit.getPluginManager().registerEvents(abilityMenu, this);
+            Bukkit.getPluginManager().registerEvents(milestoneMenu, this);
+            Bukkit.getPluginManager().registerEvents(passiveMenu, this);
 
-            SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu);
+            SkillsCommand skillsCommand = new SkillsCommand(this, api, runtime::get, repository, menu, adminMenu);
             getCommand("skills").setExecutor(skillsCommand);
             getCommand("skills").setTabCompleter(skillsCommand);
-            SkillsAdminCommand adminCommand = new SkillsAdminCommand(this, migration);
+            SkillsAdminCommand adminCommand = new SkillsAdminCommand(this, migration, adminMenu);
             getCommand("skillsadmin").setExecutor(adminCommand);
             getCommand("skillsadmin").setTabCompleter(adminCommand);
 
             if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                new SkillsPlaceholderExpansion(api, runtime::get, getPluginMeta().getVersion()).register();
+                new SkillsPlaceholderExpansion(api, runtime::get, abilities, getPluginMeta().getVersion()).register();
             }
 
             scheduleFlush();
             for (var player : Bukkit.getOnlinePlayers()) players.load(player);
             core.modules().updateState("skills", ModuleRegistry.ModuleState.READY,
-                "Core API " + core.version().apiVersion() + ", mode=" + runtime.get().migrationMode());
-            getLogger().info("PlexonSkills " + getPluginMeta().getVersion() + " enabled on Core API " + core.version().apiVersion() + " in " + runtime.get().migrationMode() + " mode.");
+                "Core API " + core.version().apiVersion() + ", schema=2, mode=" + runtime.get().migrationMode());
+            getLogger().info("PlexonSkills " + getPluginMeta().getVersion() + " enabled on Core API " + core.version().apiVersion() + " with product schema 2 in " + runtime.get().migrationMode() + " mode.");
         } catch (Throwable failure) {
             getLogger().log(java.util.logging.Level.SEVERE, "PlexonSkills failed to initialize safely", failure);
             if (core != null) core.modules().updateState("skills", ModuleRegistry.ModuleState.FAILED, failure.getClass().getSimpleName() + ": " + failure.getMessage());
@@ -103,11 +148,12 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         if (flushTask != null) { flushTask.cancel(); flushTask = null; }
+        Bukkit.getServicesManager().unregisterAll(this);
         if (blockRuntime != null) blockRuntime.close();
+        if (abilities != null) abilities.close();
         if (feedback != null) feedback.close();
         if (players != null && runtime.get() != null) players.shutdown(Duration.ofSeconds(runtime.get().shutdownTimeoutSeconds()));
         if (repository != null) repository.close();
-        Bukkit.getServicesManager().unregisterAll(this);
         if (core != null) {
             core.modules().updateState("skills", ModuleRegistry.ModuleState.DISABLED, "Plugin disabled");
             core.modules().unregister("skills");
@@ -121,6 +167,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
             RuntimeSettings candidate = RuntimeSettings.load(this, epoch.incrementAndGet());
             runtime.set(candidate);
             blockRuntime.rebuild();
+            abilities.resetForReload();
             feedback.start();
             scheduleFlush();
             core.modules().updateState("skills", ModuleRegistry.ModuleState.READY, "Reloaded epoch " + candidate.epoch() + ", mode=" + candidate.migrationMode());
@@ -128,8 +175,74 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         } catch (Throwable error) {
             runtime.set(previous);
             getLogger().warning("Runtime reload rejected: " + error.getMessage());
+            try {
+                if (previous != null) {
+                    if (blockRuntime != null) blockRuntime.rebuild();
+                    if (abilities != null) abilities.resetForReload();
+                    if (feedback != null) feedback.start();
+                    if (players != null) scheduleFlush();
+                }
+            } catch (Throwable rollbackFailure) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Runtime rollback encountered a secondary failure", rollbackFailure);
+                core.modules().updateState("skills", ModuleRegistry.ModuleState.FAILED, "Reload rollback failed: " + rollbackFailure.getMessage());
+            }
             return false;
         }
+    }
+
+    /**
+     * Persist one boolean configuration value on Core's I/O lane, then atomically reload on the
+     * server thread. This is intentionally narrow: complex balancing remains YAML-controlled.
+     */
+    public void updateBooleanConfig(String fileName, String path, boolean value, Player actor, Runnable successAction) {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Configuration mutations must be initiated on the primary thread");
+        if (!Set.of("skills.yml", "abilities.yml", "rewards.yml").contains(fileName)) throw new IllegalArgumentException("Unsupported mutable config file");
+        File file = new File(getDataFolder(), fileName);
+        core.scheduler().supplyIo(() -> {
+            try {
+                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+                ConfigBooleanPrevious previous = new ConfigBooleanPrevious(yaml.contains(path), yaml.getBoolean(path));
+                yaml.set(path, value);
+                yaml.save(file);
+                return previous;
+            } catch (Exception ex) {
+                throw new IllegalStateException("Failed to persist " + fileName + " path " + path, ex);
+            }
+        }).whenComplete((previous, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                if (actor.isOnline()) actor.sendMessage(Component.text("Configuration update failed: " + rootMessage(error)));
+                return;
+            }
+            if (reloadRuntime()) {
+                if (actor.isOnline()) {
+                    actor.sendMessage(Component.text("Configuration updated and runtime reloaded."));
+                    if (successAction != null) successAction.run();
+                }
+                return;
+            }
+            if (actor.isOnline()) actor.sendMessage(Component.text("Runtime rejected the update; restoring the previous file value."));
+            restoreBooleanConfig(file, path, previous, actor);
+        }));
+    }
+
+    private void restoreBooleanConfig(File file, String path, ConfigBooleanPrevious previous, Player actor) {
+        core.scheduler().supplyIo(() -> {
+            try {
+                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+                yaml.set(path, previous.existed() ? previous.value() : null);
+                yaml.save(file);
+                return true;
+            } catch (Exception ex) {
+                throw new IllegalStateException("Failed to restore rejected configuration value", ex);
+            }
+        }).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Failed to restore rejected config mutation", error);
+                if (actor.isOnline()) actor.sendMessage(Component.text("WARNING: configuration rollback failed; inspect the server log before another reload."));
+            } else if (actor.isOnline()) {
+                actor.sendMessage(Component.text("Previous configuration value restored."));
+            }
+        }));
     }
 
     public void sendDiagnostics(CommandSender sender) {
@@ -141,13 +254,16 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         sender.sendMessage(Component.text("Runtime: epoch=" + runtime.get().epoch() + " mode=" + runtime.get().migrationMode() + " block-routes=" + runtime.get().skills().subscribedMaterials().size()));
         sender.sendMessage(Component.text("Profiles: loaded=" + players.loadedCount() + " dirty=" + players.dirtyCount()));
         sender.sendMessage(Component.text("XP: grants=" + d.xpGrants() + " rejected=" + d.xpRejected() + " shadow=" + d.shadowContributions() + " levelups=" + d.levelUps()));
+        sender.sendMessage(Component.text("Abilities: active-players=" + abilities.activePlayers() + " activated=" + d.abilityActivations() + " rejected=" + d.abilityRejected() + " ended=" + d.abilityEnded()));
+        sender.sendMessage(Component.text("Milestones: reached=" + d.milestonesReached() + " templates=" + runtime.get().milestones().milestones(com.zpkdxgames.plexonskills.skill.SkillType.MINING).size()));
         sender.sendMessage(Component.text("Anti-exploit: origin-rejected=" + d.originRejected() + " profile-not-ready=" + d.profileNotReady()));
         sender.sendMessage(Component.text("Events: block=" + d.blockFacts() + " combat=" + d.combatFacts() + " fishing=" + d.fishingFacts() + " acrobatics=" + d.acrobaticsFacts()));
-        sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
+        sender.sendMessage(Component.text("Persistence: queue=" + repository.queuedWrites() + " in-flight=" + players.inFlightWriteCount() + " detached=" + players.detachedPendingCount() + " health=" + repository.health().state() + " failures=" + d.persistenceFailures() + " flush-batches=" + d.flushBatches()));
+        if (productSchema != null) sender.sendMessage(Component.text("Product schema: " + productSchema.state() + " rows=" + productSchema.fingerprint().progressRows() + " backup=" + productMigrationBackup));
         sender.sendMessage(Component.text("Core events: " + eventMetrics));
         sender.sendMessage(Component.text("Core origin: " + origin));
         var m = migration.status();
-        sender.sendMessage(Component.text("Migration: " + m.state() + " source=" + m.source() + " exists=" + m.exists()));
+        sender.sendMessage(Component.text("mcMMO migration: " + m.state() + " source=" + m.source() + " exists=" + m.exists()));
     }
 
     public void backup(CommandSender sender) {
@@ -177,7 +293,7 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
         ModuleRegistry.RegistrationResult result = core.modules().register(new ModuleRegistry.ModuleDescriptor(
             "skills", "PlexonSkills", getName(), getPluginMeta().getVersion(), this,
             ModuleRegistry.ModuleVersionRange.parse(">=2.0 <3.0"),
-            Set.of("skills", "progression", "block-break-consumer", "sqlite-persistence", "placeholderapi"),
+            Set.of("skills", "progression", "active-abilities", "milestones", "block-break-consumer", "sqlite-persistence", "schema-v2-migration", "public-api-2.0", "placeholderapi"),
             state, detail, Instant.now()));
         if (!result.success()) throw new IllegalStateException("Core module registration failed: " + result.message());
     }
@@ -197,6 +313,14 @@ public final class PlexonSkillsPlugin extends JavaPlugin {
     }
 
     private void saveIfMissing(String name) {
-        if (!new java.io.File(getDataFolder(), name).exists()) saveResource(name, false);
+        if (!new File(getDataFolder(), name).exists()) saveResource(name, false);
     }
+
+    private static String rootMessage(Throwable error) {
+        Throwable cursor = error;
+        while (cursor.getCause() != null) cursor = cursor.getCause();
+        return cursor.getMessage() == null ? cursor.getClass().getSimpleName() : cursor.getMessage();
+    }
+
+    private record ConfigBooleanPrevious(boolean existed, boolean value) { }
 }

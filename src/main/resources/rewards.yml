@@ -1,1 +1,32 @@
-rewards: {}
+# PlexonSkills 2.0 milestone rewards
+# Defaults are level-derived passive progression bonuses. They are deliberately not consumable
+# item/command payouts, so they are restart-safe and cannot double-claim after a crash.
+milestones:
+  enabled: true
+  disabled-skills: []
+  defaults:
+    - id: established
+      progress: 0.10
+      name: "{skill} Established"
+      description: "The first major {skill} progression chapter is secured."
+      passive-xp-bonus: 0.02
+    - id: adept
+      progress: 0.25
+      name: "{skill} Adept"
+      description: "Reliable {skill} technique unlocks a stronger passive progression rate."
+      passive-xp-bonus: 0.025
+    - id: expert
+      progress: 0.50
+      name: "{skill} Expert"
+      description: "Half of the configured {skill} journey is complete."
+      passive-xp-bonus: 0.03
+    - id: master
+      progress: 0.75
+      name: "{skill} Master"
+      description: "Advanced {skill} progression receives another permanent boost."
+      passive-xp-bonus: 0.035
+    - id: ascendant
+      progress: 0.90
+      name: "{skill} Ascendant"
+      description: "The final progression chapter before full mastery has been reached."
+      passive-xp-bonus: 0.04

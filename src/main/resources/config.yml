@@ -1,5 +1,5 @@
-# PlexonSkills 1.0.0
-# SHADOW is the safe default while mcMMO is still present. Switch to PRIMARY only after staging.
+# PlexonSkills 2.0.0
+# SHADOW is the safe default while an older progression source is still authoritative.
 migration:
   mcmmo:
     mode: SHADOW
@@ -23,12 +23,35 @@ persistence:
   shutdown-timeout-seconds: 5
 
 anti-exploit:
+  # Natural block skills never credit PLAYER_PLACED blocks. UNKNOWN is conservative by default.
   block-origin:
     enabled: true
     unknown-policy: REJECT
+
+  # Farming intentionally differs from Mining/Excavation: mature player-planted crops are normal
+  # survival gameplay. Immediate replants are not eligible because maturity is required by skills.yml.
+  farming:
+    player-planted-policy: MATURE_ONLY
+    allow-unknown-origin: false
+
   combat:
     allow-pvp: false
-    ignore-armor-stands: true
+    exclude-npcs: true
+    # Spawn provenance is captured in-memory from CreatureSpawnEvent; no DB lookup occurs per hit.
+    spawner-xp-multiplier: 0.25
+    breeding-xp-multiplier: 0.50
+    custom-xp-multiplier: 0.0
+    same-target-minimum-interval-ms: 250
+
+  fishing:
+    minimum-catch-interval-ms: 1000
+  acrobatics:
+    minimum-event-interval-ms: 1500
+  repair:
+    minimum-event-interval-ms: 250
+  alchemy:
+    attribution-window-ms: 120000
+
   game-modes:
     - SURVIVAL
 

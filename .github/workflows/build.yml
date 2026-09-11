@@ -9,9 +9,10 @@ permissions:
   contents: read
 
 env:
-  CORE_VERSION: '2.0.0'
-  CORE_SHA256: '179b82ce7fd82e3095b3a6d0d893af6d7c97f91bd7ce403e96d7f3581462dfec'
+  CORE_VERSION: '2.0.4'
+  CORE_SHA256: '61d625a717da9f46ee9231e1970d84b4c317ae12cf4090cdf7c9d39b6a1a9baf'
   GRADLE_VERSION: '9.1.0'
+  VERSION: '2.0.0'
 
 jobs:
   verify:
@@ -25,7 +26,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
-      - name: Provision pinned PlexonCore 2
+      - name: Provision pinned PlexonCore ${CORE_VERSION}
         shell: bash
         run: |
           set -euo pipefail
@@ -39,11 +40,12 @@ jobs:
       - name: Stage distribution
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp build/libs/PlexonSkills-1.0.0.jar dist/
+          cp "build/libs/PlexonSkills-${VERSION}.jar" dist/
           cp build/distributions/SHA256SUMS.txt dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: PlexonSkills-1.0.0
+          name: PlexonSkills-${{ env.VERSION }}
           path: dist/*
           if-no-files-found: error
