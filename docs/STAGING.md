@@ -1,12 +1,14 @@
-# Staging and Release Acceptance
+# Staging and Runtime Acceptance
 
-This file is the authoritative manual gate for PlexonSkills 2.0 stable publication.
+This file is the authoritative **live PlexonCraft deployment-certification** checklist for PlexonSkills 2.0. It is intentionally separate from reproducible GitHub source/release closure.
 
-## Current candidate status
+Stable `v2.0.0` may therefore carry `runtime_certification=NOT_EXECUTED` in release provenance while still requiring exact-source CI, accepted lineage, distribution verification, immutable stable publication, and downloaded-asset checksum/provenance verification.
 
-Automated verification: run through GitHub Actions for each candidate commit.
+## Current runtime status
 
-PlexonCraft/manual runtime validation at RC preparation time:
+Automated source/release verification: run through GitHub Actions for each accepted commit and final stable publication.
+
+PlexonCraft/manual runtime validation currently remains:
 
 ```text
 GUI/navigation validation:        NOT EXECUTED
@@ -26,7 +28,7 @@ These entries must not be changed to PASS without actual runtime evidence.
 - production-like Paper 26.2 server;
 - Java 25;
 - PlexonCore 2.0.4;
-- candidate PlexonSkills JAR and matching checksum;
+- exact stable PlexonSkills JAR and matching checksum;
 - representative config files;
 - representative copy of any 1.x/prerelease `skills.db` used for migration testing;
 - PlaceholderAPI if used in production;
@@ -78,7 +80,9 @@ COOLDOWN state
 cooldown expiry back to READY
 admin cooldown clear/end action
 reload while transient ability state exists
-quit cleanup
+logout while ACTIVE ends the active effect
+logout/reconnect during COOLDOWN preserves the original cooldown deadline
+expired offline cooldown is cleaned without counting the player as ACTIVE
 ```
 
 Cross at least one configured milestone naturally and through an administrator XP operation. Verify milestone event, passive change, presentation and no duplicated effects after restart.
@@ -88,7 +92,7 @@ Cross at least one configured milestone naturally and through an administrator X
 Using a representative legacy database copy:
 
 1. record sample player/skill canonical XP values and row counts;
-2. start the candidate;
+2. start the stable artifact;
 3. verify `skills-pre-2.0-*.db` backup exists;
 4. verify startup reaches `CURRENT_2_0`;
 5. compare canonical XP samples and aggregate row counts with the source;
@@ -122,7 +126,7 @@ With a small consumer test plugin, discover `PlexonSkillsAPI` through ServicesMa
 
 ## Performance matrix
 
-Capture a baseline from the previous production/accepted build and compare the RC under equivalent load:
+Capture a baseline from the previous production/accepted build and compare stable 2.0 under equivalent load:
 
 ```text
 idle
@@ -151,16 +155,16 @@ active GUI sessions
 
 Run a minimum 30-minute soak with representative progression and menu activity. Verify no monotonic heap/session/task growth and no write-queue accumulation.
 
-## Stable release decision
+## Deployment decision
 
-Stable `v2.0.0` is permitted only when:
+Production cutover is considered runtime-certified only when:
 
-- automated CI is green on the intended stable commit;
+- the exact stable artifact is used;
 - all required manual functional rows pass;
-- real migration rehearsal passes;
+- real migration rehearsal passes where applicable;
 - Spark/performance comparison is acceptable;
 - persistence/reload/restart checks pass;
 - 30-minute soak passes;
-- no unresolved release-blocking defects remain.
+- no unresolved HIGH/CRITICAL runtime defects remain.
 
-Until then, keep PR #2 unmerged/draft as appropriate and publish only prerelease candidates such as `v2.0.0-rc.1`.
+A failure discovered here starts a new defect/remediation cycle. It does not alter or rewrite the provenance of the already-published exact stable GitHub artifact.

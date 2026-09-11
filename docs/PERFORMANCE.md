@@ -8,7 +8,7 @@ PlexonSkills 2.0 keeps gameplay mutation authoritative on the Paper primary thre
 - Skill definitions/material routes are precomputed at runtime load.
 - Block progression consumes PlexonCore's shared block-origin gateway rather than duplicating provenance storage.
 - XP actionbar feedback is coalesced.
-- Ability expiration uses one shared sweep task for all active players.
+- Ability expiration uses one shared sweep task for active and cooldown-only players; logout cannot reset a configured cooldown.
 - PlaceholderAPI reads only loaded in-memory state.
 - Leaderboard queries are asynchronous and bounded.
 
@@ -42,8 +42,8 @@ Database ranking stays outside inventory callbacks. `top` is limited to at most 
 
 ## Performance acceptance
 
-Automated CI proves compilation, unit/integration behavior, distribution contents and deterministic persistence migration. It does not prove production MSPT.
+Automated GitHub CI proves compilation, tests, distribution contents, dependency isolation, accepted source lineage and deterministic migration contracts. Stable publication additionally rebuilds exact final `main` and verifies the downloaded public release assets.
 
-Before stable `v2.0.0`, execute the production-like matrix in `STAGING.md`, including Spark baseline/comparison and a minimum 30-minute soak. Record at least MSPT, TPS, heap trend, thread count, relevant samples, persistence queue depth and active UI sessions.
+Those automated gates do not prove production MSPT. PlexonCraft performance certification therefore remains a separate deployment follow-up using `STAGING.md`, including Spark baseline/comparison and a minimum 30-minute soak. Record at least MSPT, TPS, heap trend, thread count, relevant samples, persistence queue depth and active UI sessions.
 
-At RC preparation time, those PlexonCraft runtime performance tests remain `NOT EXECUTED`; the candidate must therefore remain prerelease-only.
+Until that live work is executed, release provenance must retain `runtime_certification=NOT_EXECUTED`; it is not inferred from CI and does not block reproducible GitHub stable source/release closure.
