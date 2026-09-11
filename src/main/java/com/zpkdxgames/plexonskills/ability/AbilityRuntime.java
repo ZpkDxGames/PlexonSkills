@@ -147,8 +147,17 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
 
     @EventHandler
     public synchronized void onQuit(PlayerQuitEvent event) {
-        activeUntil.remove(event.getPlayer().getUniqueId());
-        cooldownUntil.remove(event.getPlayer().getUniqueId());
+        UUID playerId = event.getPlayer().getUniqueId();
+        activeUntil.remove(playerId);
+        long now = System.currentTimeMillis();
+        long[] cooldown = cooldownUntil.get(playerId);
+        if (hasFutureDeadline(cooldown, now)) {
+            // Keep one zeroed active-state row so the shared sweep continues to age and
+            // eventually evict the retained cooldown while the player is offline.
+            activeUntil.put(playerId, new long[SkillType.values().length]);
+        } else {
+            cooldownUntil.remove(playerId);
+        }
     }
 
     private synchronized void sweep() {
@@ -182,6 +191,12 @@ public final class AbilityRuntime implements Listener, AutoCloseable {
                 cooldownUntil.remove(playerId);
             }
         }
+    }
+
+    static boolean hasFutureDeadline(long[] deadlines, long now) {
+        if (deadlines == null) return false;
+        for (long deadline : deadlines) if (deadline > now) return true;
+        return false;
     }
 
     private static long value(Map<UUID, long[]> map, UUID playerId, SkillType skill) {
