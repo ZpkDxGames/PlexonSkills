@@ -1,6 +1,6 @@
 # PlexonSkills
 
-PlexonSkills is PlexonCraft's first-party, Core-native RPG progression system. The 2.0 line is a premium-tier rebuild with 13 skills, session-safe inventory UI, active abilities, milestone-derived passives, asynchronous leaderboards, administration tooling, PlaceholderAPI integration and conservative anti-exploit provenance rules.
+PlexonSkills **2.0.0** is PlexonCraft's first-party, Core-native RPG progression system. The 2.0 line provides 13 skills, session-safe inventory UI, active abilities, milestone-derived passives, asynchronous leaderboards, administration tooling, PlaceholderAPI integration and conservative anti-exploit provenance rules.
 
 ## Requirements
 
@@ -10,7 +10,7 @@ PlexonSkills is PlexonCraft's first-party, Core-native RPG progression system. T
 - PlaceholderAPI 2.12.1 optional
 - PlexonBlacksmith optional
 
-PlexonCore is a hard runtime dependency. Do not install a PlexonSkills 2.0 build against an older Core runtime.
+PlexonCore is a hard runtime dependency. Do not install PlexonSkills 2.0 against an older Core runtime.
 
 ## Skills
 
@@ -53,9 +53,11 @@ Unknown/partial schemas, unknown skill identifiers, invalid UUIDs and negative c
 - XP/profile mutations are server-primary-thread authoritative.
 - SQLite writes are coalesced and serialized by Core.
 - Logout writes are tracked; shutdown enqueues final READY snapshots and waits for the complete persistence barrier before closing SQLite.
+- Rapid logout/rejoin is generation-guarded and waits behind any detached logout snapshot before loading the returning player.
 - Reload validates a candidate runtime before keeping it and restores the previous runtime/subsystem scheduling if application fails.
 - Leaderboards never query synchronously from inventory events.
 - Ability expiration uses one shared coordinator, not one repeating task per player.
+- Active effects end on logout, but configured cooldown deadlines survive reconnect and expire through the shared coordinator; reconnect cannot reset an ability cooldown.
 - Natural-only block progression rejects player-placed provenance and can fail closed for unknown origin.
 
 ## Public API
@@ -70,7 +72,7 @@ Identifier: `plexonskills`. Placeholder resolution is strictly loaded-memory/run
 
 ## Build and verification
 
-CI pins PlexonCore 2.0.4 by SHA-256 and uses Java 25:
+Canonical CI pins PlexonCore 2.0.4 by SHA-256 and uses Java 25:
 
 ```bash
 gradle --no-daemon clean test check javadoc shadowJar verifyDistribution writeSha256
@@ -83,9 +85,15 @@ build/libs/PlexonSkills-2.0.0.jar
 build/distributions/SHA256SUMS.txt
 ```
 
-## Release policy
+CI additionally proves accepted Phase 3 and RC2 ancestry, requires non-empty all-green tests, verifies Java class major 69, checks plugin/manifest version parity, rejects shaded Core/Paper/PlaceholderAPI APIs, and emits exact-source provenance.
 
-`v2.0.0-rc.1` is a prerelease candidate only. Stable `v2.0.0` remains blocked until the production-like manual matrix has actually passed on PlexonCraft, including GUI/navigation, real legacy migration, Spark comparison, persistence/reload behavior and soak validation. Missing runtime evidence is reported as `NOT EXECUTED`; it is never inferred from CI.
+## Stable release policy
+
+Stable publication runs only from `release/stable` when that branch points to exact current `main`. It rebuilds and retests that source, publishes `PlexonSkills-2.0.0.jar`, `SHA256SUMS.txt`, `TEST_SUMMARY.txt`, and `PROVENANCE.txt`, then downloads those public assets and verifies their checksum and exact source/lineage provenance before the workflow can succeed.
+
+Live PlexonCraft GUI/migration/progression/Spark/soak certification is a deployment follow-up. Missing live evidence is recorded as `runtime_certification=NOT_EXECUTED`; it does not block reproducible GitHub source/release closure. See [Staging / Runtime Acceptance](docs/STAGING.md).
+
+The immutable rollback artifact for stable 2.0 is `v2.0.0-rc.2` at `fd1f15205353f91e42236865b8dd6141d46b3634`, JAR SHA-256 `af31444e428d2f547ec9c8f5db49aaffeac4594efbe2c3c24e90e74dcb38bf07`.
 
 Documentation:
 
@@ -97,5 +105,5 @@ Documentation:
 - [2.0 Migration](docs/MIGRATION_2_0.md)
 - [mcMMO Migration](docs/MIGRATION_MCMMO.md)
 - [Performance](docs/PERFORMANCE.md)
-- [Staging / Acceptance](docs/STAGING.md)
+- [Staging / Runtime Acceptance](docs/STAGING.md)
 - [Recovery](docs/RECOVERY.md)
