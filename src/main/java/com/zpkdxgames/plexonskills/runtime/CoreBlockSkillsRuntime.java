@@ -12,11 +12,13 @@ import com.zpkdxgames.plexonskills.skill.SkillProgressionService;
 import com.zpkdxgames.plexonskills.skill.SkillRegistry;
 import com.zpkdxgames.plexonskills.skill.SkillType;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.entity.Player;
 
+import java.util.Collection;
 import java.util.function.Supplier;
 
 public final class CoreBlockSkillsRuntime implements AutoCloseable {
@@ -37,13 +39,18 @@ public final class CoreBlockSkillsRuntime implements AutoCloseable {
         closeSubscription();
         RuntimeSettings runtime = settings.get();
         if (runtime.skills().subscribedMaterials().isEmpty()) return;
-        // Subscribe to all relevant origins and apply policy per routed skill. Farming intentionally
-        // differs from natural-block skills and must not be pre-filtered as NATURAL by Core.
-        CoreBlockSubscription spec = CoreBlockSubscription.builder()
-            .materials(runtime.skills().subscribedMaterials())
-            .requiresNaturalOrigin(false)
-            .build();
+        // Core's flag requests one shared provenance resolution for the routed event; it does not
+        // pre-filter subscribers. Skills must request the fact explicitly because both natural-block
+        // policy and farming policy interpret NATURAL / PLAYER_PLACED / UNKNOWN themselves.
+        CoreBlockSubscription spec = blockSubscription(runtime.skills().subscribedMaterials());
         subscription = core.events().subscribeBlockBreak("plexonskills", spec, this::handle);
+    }
+
+    static CoreBlockSubscription blockSubscription(Collection<Material> materials) {
+        return CoreBlockSubscription.builder()
+            .materials(materials)
+            .requiresNaturalOrigin(true)
+            .build();
     }
 
     private void handle(CoreBlockBreakContext context) {
